@@ -1,6 +1,9 @@
 # propcalc – propulsion combination optimiser (SAE Aero Design Micro Class)
 
-DATA IS FROM APC & rcplanes.online
+https://202294.xyz/
+Auto deployment is setup through cloudflare so after every merge the site should be updated automatically
+
+** DATA IS FROM APC & rcplanes.online **
 
 
 Tries every legal **motor × prop × ESC × battery** from your data files, ranks them and draws graphs.
