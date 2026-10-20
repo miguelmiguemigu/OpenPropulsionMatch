@@ -1,0 +1,125 @@
+name,brand,kv,rm_mohm,i0_a,i0_voltage,mass_g,max_current_a,rating_note,source,include
+X2814 1000kV,SunnySky,1000,35.5,1.3,10,113,55,55 A / 30 s,sunnyskyusa.com,
+X2814 1400kV,SunnySky,1400,15.9,2.3,10,109,80,80 A / 30 s,readymaderc.com,
+X2820 1000kV,SunnySky,1000,18.5,1.7,10,147,70,70 A / 1 min,sunnyskyusa.com,
+X2820 1250kV,SunnySky,1250,13.1,2.5,10,144,79,79 A / 30 s,sunnyskyusa.com,
+HW 2820SL 1000kV,Hobbywing,1000,21.4,2.65,14.8,145,77,77 A / 46 s,hobbywing.com,
+HW 2820SL 1250kV,Hobbywing,1250,14.8,3.7,14.8,145.5,81.8,81.8 A / 1 min 49 s,hobbywing.com,
+HW 2826SL 1100kV,Hobbywing,1100,14.08,3.7,14.8,175.8,82.4,82.4 A / 2 min 15 s,hobbywing.com,
+AT2820 1250kV,T-Motor,1250,16,2.7,10,141,70,70 A / 180 s,ligpower.com,
+O.S. Motor OMA-3815-1000,O.S. Motor,1000,25.2,1.72,10,134,60,"60 A, 388 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Turnigy C3542-1450 14p,Turnigy,1400,12.8,2.91,10,134,55,"55 A, 400 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Himax HC3516-1350,Himax,1350,13.8,2.75,10,134,56,"56 A, 400 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Exceed RC Rocket 3020-1250,Exceed RC,1250,14.3,2.68,10,145,55,"55 A, 400 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Exceed RC Rocket 3025-1130,Exceed RC,1130,13.9,2.77,10,170,55,"55 A, 430 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+O.S. Motor OMA-3820-1200,O.S. Motor,1200,14.1,2.72,10,155,75,"75 A, 440 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+O.S. Motor OMA-3820-960,O.S. Motor,960,22.1,1.92,10,155,70,"70 A, 450 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A30-10L V4,Hacker,1185,16.3,2.43,10,143,60,"60 A, 500 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Mega ACn 22-20-3E,Mega,1410,9.3,3.77,10,165,70,"70 A, 510 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+AXI motors 2826/8 Gold Line V3 Long,AXI motors,1130,12.0,3.10,10,187,57,"57 A, 570 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+AXI motors 2826/8 Gold Line V3,AXI motors,1130,13.0,2.90,10,177,56,"56 A, 570 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+4-Max PPO-3548-1100,4-Max,1100,15.0,2.60,10,167,60,"60 A, 580 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Himax HC3528-1000,Himax,1000,14.3,2.73,10,197,68,"68 A, 590 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+4-Max PPPO-3542-1250,4-Max,1250,14.7,2.62,10,142,58,"58 A, 590 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Cobra C-2826/8,Cobra,1130,13.7,2.79,10,171,55,"55 A, 610 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Cobra C-2820/8,Cobra,1450,11.3,3.21,10,139,55,"55 A, 610 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby D3548 EVO 1150,Flash Hobby,1150,13.4,2.85,10,170,55,"55 A, 624 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A30-10XL V4,Hacker,900,20.7,2.04,10,177,60,"60 A, 650 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A30-10XL-LN V4,Hacker,900,18.6,2.22,10,190,65,"65 A, 650 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A30-8XL-LN V4,Hacker,1100,12.4,3.03,10,190,65,"65 A, 650 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A30-8XL V4 Para,Hacker,1100,13.8,2.79,10,177,65,"65 A, 650 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A30-8XL V4,Hacker,1100,13.8,2.79,10,177,65,"65 A, 650 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Planet-Hobby Joker 3548-3.5 V3,Planet-Hobby,1120,14.5,2.67,10,167,55,"55 A, 660 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Dualsky ECO 2826C-V2-1120,Dualsky,1120,14.5,2.67,10,167,55,"55 A, 660 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Mega ACn 22-30-3E,Mega,935,13.9,2.80,10,220,70,"70 A, 680 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Mega ACn 22-30-3,Mega,1260,7.6,4.46,10,220,70,"70 A, 680 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Leopard LC3542-5T 1080kv,Leopard,1080,21.4,1.96,10,135,55,"55 A, 680 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Leomotion LEO 2826GC-0920,Leomotion,920,17.1,2.37,10,195,55,"55 A, 720 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Surpass C3542-1000,Surpass,1000,25.8,1.69,10,132,55,"55 A, 750 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Spitz C3542-06 1000,Spitz,1000,25.8,1.69,10,132,55,"55 A, 750 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+ROXXY C35-42-06 930,ROXXY,930,29.9,1.51,10,132,55,"55 A, 750 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyStar 2820-06 1000KV,HobbyStar,1000,25.8,1.69,10,132,55,"55 A, 750 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Aeolian C3542-KV1000,Aeolian,1000,25.8,1.69,10,132,55,"55 A, 750 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AT2814-1200,T-Motor,1200,24.0,1.77,10,108,55,"55 A, 800 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AM480-900,T-Motor,900,27.8,1.61,10,145,60,"60 A, 800 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Hobby AM480 V2 KV900,T-Hobby,900,27.8,1.61,10,145,60,"60 A, 800 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Kavan 3536 KV1150,Kavan,1150,26.2,1.66,10,108,55,"55 A, 800 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HET 600-33 KV1360,HET,1360,7.2,4.62,10,205,70,"70 A, 800 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+EP Product EP 2826-1150,EP Product,1130,13.7,2.79,10,171,55,"55 A, 810 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+EP Product EP 2820-1500,EP Product,1450,11.2,3.24,10,140,55,"55 A, 810 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+SunnySky X2814 KV1250 V3 3-4S,SunnySky,1250,21.5,1.93,10,110,55,"55 A, 815 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AT2826-900,T-Motor,900,21.0,2.01,10,175,59,"59 A, 820 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Cobra CP-2814-1450,Cobra,1450,14.0,2.70,10,120,55,"55 A, 820 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Leopard LC4250-4.5T 960kv,Leopard,960,14.3,2.73,10,208,75,"75 A, 823 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+RedRock 2826/04 900,RedRock,900,21.7,1.95,10,171,75,"75 A, 840 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Surpass C3542-1250,Surpass,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Spitz C3542-05 1250,Spitz,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+ROXXY C35-42-05 1100,ROXXY,1100,21.3,1.96,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+RedRock 2826/03 1100,RedRock,1100,14.5,2.67,10,171,75,"75 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Plettenberg Orbit 15-12,Plettenberg,1290,10.6,3.40,10,170,55,"55 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+KingVal 3542 1250KV,KingVal,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyStar 2820-05 1250KV,HobbyStar,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+E-flite Power 25 BL 1250,E-flite,1250,10.1,3.54,10,183,58,"58 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Aeolian C3542-KV1250,Aeolian,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+SunnySky X2820 KV1100 3-5S,SunnySky,1100,19.9,2.07,10,138,60,"60 A, 880 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+SunnySky X2814 KV1250 3-4S,SunnySky,1250,22.1,1.89,10,108,55,"55 A, 880 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AS2814-1200,T-Motor,1200,22.8,1.85,10,112,61,"61 A, 885 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Cobra CM-3520/10,Cobra,980,13.5,2.85,10,210,60,"60 A, 890 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Cobra C-3520/10,Cobra,980,13.5,2.85,10,210,60,"60 A, 890 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AT2820-1050,T-Motor,1050,21.6,1.94,10,139,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+ROXXY D35-50-05 1150,ROXXY,1150,15.8,2.49,10,152,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Kavan 3548 KV900,Kavan,900,21.0,2.01,10,175,57,"57 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Kavan 3542 KV950,Kavan,950,26.5,1.66,10,139,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A40-16S V4 Kv1000,Hacker,1000,15.0,2.61,10,190,60,"60 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Hacker A40-12S V4 Kv1350,Hacker,1350,8.2,4.17,10,190,75,"75 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Dualsky XM4250CA-5,Dualsky,1020,13.4,2.86,10,200,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Dualsky ECO 3520C-1020,Dualsky,1020,13.4,2.86,10,200,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HET TX3826 KV1000,HET,1000,14.0,2.76,10,199,63,"63 A, 918 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby D3536 RC 1250,Flash Hobby,1250,22.7,1.85,10,106,57,"57 A, 919 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+SunnySky X3120 KV1100 V3 3-4S,SunnySky,1100,17.8,2.27,10,149,64,"64 A, 944 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Planet-Hobby Joker 4250-4 V3,Planet-Hobby,1020,12.5,3.03,10,210,80,"80 A, 960 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Dualsky ECO 3520C-V2-1020,Dualsky,1020,12.5,3.03,10,210,80,"80 A, 960 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby D3542 EVO 1250,Flash Hobby,1250,15.7,2.48,10,136,63,"63 A, 962 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AS2820-1050,T-Motor,1050,20.5,2.03,10,144,67,"67 A, 963 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Surpass C3548-900,Surpass,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Spitz C3548-05 900,Spitz,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+ROXXY D35-55-04 900,ROXXY,900,21.0,2.01,10,175,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+KingVal 3548 900KV,KingVal,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Kavan 3542 KV1150,Kavan,1150,17.6,2.28,10,141,70,"70 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyStar 2826-05 900KV,HobbyStar,900,24.7,1.77,10,157,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Aeolian C3548-KV900,Aeolian,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HET TX3826 KV1320,HET,1320,7.8,4.33,10,202,70,"70 A, 1020 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Surpass C3542-1450,Surpass,1450,12.2,3.02,10,132,78,"78 A, 1050 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Spitz C3542-04 1450,Spitz,1450,12.2,3.02,10,132,78,"78 A, 1050 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+KingVal 3542 1450KV,KingVal,1450,12.2,3.02,10,132,78,"78 A, 1050 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyStar 2820-04 1450KV,HobbyStar,1450,12.2,3.02,10,132,78,"78 A, 1050 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Aeolian C3542-KV1400,Aeolian,1400,13.1,2.86,10,132,78,"78 A, 1050 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor AT2826-1100,T-Motor,1100,14.0,2.75,10,175,59,"59 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Surpass C3548-1100,Surpass,1100,14.4,2.69,10,172,72,"72 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+SunnySky X3120 KV1025 V3 3-4S,SunnySky,1025,18.8,2.18,10,158,75,"75 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Spitz C3548-04 1100,Spitz,1100,14.4,2.69,10,172,72,"72 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+KingVal 3548 1100KV,KingVal,1100,14.4,2.69,10,172,72,"72 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyStar 2826-04 1100KV,HobbyStar,1100,16.5,2.42,10,157,72,"72 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Aeolian C3548-KV1100,Aeolian,1100,14.4,2.69,10,172,72,"72 A, 1100 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+EP Product EP 3520-980,EP Product,980,13.5,2.85,10,210,60,"60 A, 1110 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+EMAX GT3520-05 KV925,EMAX,925,14.2,2.75,10,220,65,"65 A, 1128 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+MEPS NEON 3115 1050KV,MEPS,1050,30.2,1.49,10,111,56,"56 A, 1295 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+KDEDirect 500XF-925-G3,KDEDirect,925,23.8,1.82,10,155,58,"58 A, 1295 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby D3548 EVO 900,Flash Hobby,900,21.9,1.94,10,170,56,"56 A, 1324 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Surpass S3115-1050,Surpass,1050,29.8,1.50,10,112,56,"56 A, 1330 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+DYS X3115-1050,DYS,1050,29.8,1.50,10,112,56,"56 A, 1330 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+ROXXY C42-50-05 1000,ROXXY,1000,14.5,2.69,10,195,80,"80 A, 1380 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Leopard LC500-7T 1450kv,Leopard,1450,8.0,4.23,10,175,70,"70 A, 1400 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby A3112 900,Flash Hobby,900,46.1,1.07,10,103,62,"62 A, 1545 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+DarwinFPV 3115 900KV,DarwinFPV,900,43.5,1.12,10,107,67,"67 A, 1594 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+AxisFlying AE3115-900,AxisFlying,900,39.6,1.21,10,114,65,"65 A, 1617 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby A3215 920,Flash Hobby,920,32.7,1.41,10,126,70,"70 A, 1670 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyWing XRotor 3115 1050KV,HobbyWing,1050,25.0,1.73,10,126,70,"70 A, 1675 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Xnova 3215 Cinelifter 1050KV,Xnova,1050,25.3,1.71,10,125,70,"70 A, 1759 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby A3115 900,Flash Hobby,900,38.1,1.24,10,117,72,"72 A, 1768 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor V3115 KV900,T-Motor,900,40.2,1.19,10,113,83,"83 A, 1894 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor V3115 KV1050,T-Motor,1050,29.4,1.52,10,113,84,"84 A, 1903 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+Flash Hobby A3215 900,Flash Hobby,900,33.0,1.40,10,129,79,"79 A, 1910 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+RCinPower EX3115-900,RCinPower,900,39.1,1.22,10,115,80,"80 A, 1920 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+HobbyWing XRotor 3115 900KV,HobbyWing,900,34.6,1.35,10,125,81,"81 A, 1940 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
+T-Motor V3115 1050KV,T-motor,1050,33.84,1.79,10,112,83.6,"83.6 A, 1903 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes

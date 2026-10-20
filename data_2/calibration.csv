@@ -1,0 +1,7 @@
+group,motor,prop,current_a,rpm,thrust_gf,use,source
+apc_per3,X2814 1000kV,APC 12x6E,41.3,8687,2050,both,SunnySky X2814 V3 bench table (APC 12x6
+apc_per3,X2820 1000kV,APC 12x6E,45.3,9200,2250,both,SunnySky X2820 V3 bench table (APC 12x6
+apc_per3,X2820 1250kV,APC 12x6E,72.0,10258,2600,thrust,SunnySky X2820 V3 1250kV bench table (APC 12x6
+uiuc,X2814 1000kV,APC Thin Electric 12x6 (UIUC),41.3,8687,2050,both,same SunnySky bench point applied to UIUC data
+uiuc,X2820 1000kV,APC Thin Electric 12x6 (UIUC),45.3,9200,2250,both,same SunnySky bench point applied to UIUC data
+uiuc,X2820 1250kV,APC Thin Electric 12x6 (UIUC),72.0,10258,2600,thrust,same SunnySky bench point applied to UIUC data

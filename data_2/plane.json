@@ -1,0 +1,32 @@
+{
+  "_comment": "ILLUSTRATIVE airframe - replace every value with your design. Masses exclude payload and propulsion parts.",
+  "name": "Illustrative Micro airframe",
+  "wing_area_m2": 0.45,
+  "span_m": 1.524,
+  "CLmax": 1.6,
+  "CL_ground_roll": 0.5,
+  "CD0": 0.045,
+  "oswald_e": 0.8,
+  "rolling_friction": 0.04,
+  "liftoff_speed_factor": 1.1,
+  "takeoff_distance_limit_m": 15.24,
+  "takeoff_margin": 0.8,
+  "empty_mass_kg": 1.0,
+  "extra_propulsion_mass_g": 30,
+  "drag_articles": {
+    "count": 3,
+    "mass_kg_each": 0.68,
+    "CdA_m2_each": 0.015
+  },
+  "mission": {
+    "climb_altitude_m": 30,
+    "climb_speed_factor": 1.3,
+    "min_climb_rate_mps": 0.5,
+    "cruise_speed_mps": 12,
+    "cruise_time_s": 75,
+    "approach_time_s": 20,
+    "approach_current_a": 6,
+    "min_cruise_speed_factor": 1.2
+  },
+  "score_factor": 1.25
+}

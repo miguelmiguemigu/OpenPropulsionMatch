@@ -1,0 +1,18 @@
+# macOS / Python
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+
+# Website version (kept local, not published)
+web/
+web2/
+site/
+
+# Generated output - rebuild with propcalc.py / thrust_graphs.py
+results/
+results_*/
+
+# Old data copies - the active data folder is data_2/
+data/
+data_backup_*/

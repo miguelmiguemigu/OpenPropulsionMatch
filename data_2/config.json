@@ -1,0 +1,25 @@
+{
+  "_comment": "Competition rules and model settings. Edit freely.",
+  "rules": {
+    "battery_cells": 3,
+    "max_battery_mah": 1000,
+    "max_prop_diameter_in": 12
+  },
+  "model": {
+    "air_density_kg_m3": 1.225,
+    "voc_per_cell_fresh": 4.0,
+    "voc_per_cell_cruise": 3.8,
+    "wiring_and_plug_mohm": 5,
+    "usable_capacity_fraction": 0.8,
+    "speeds_mps": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+    "current_limit_mode": "cap",
+    "thrust_cal_extrapolation": "hold",
+    "_thrust_cal_extrapolation_options": "thrust calibration factor above the highest-rpm bench point: hold = keep the last bench factor; linear = extend the slope of the last two bench points (floor 0.5); flat = mean of the group's bench factors at every rpm",
+    "_current_limit_mode_options": "cap = assume an ESC current limit at the lowest rating (motor, ESC, battery); reject = drop combos that exceed a rating; ignore = no limits"
+  },
+  "ranking_without_plane": {
+    "metric": "net_thrust",
+    "avg_up_to_mps": 12,
+    "_metric_options": "avg_thrust (mean thrust 0..avg_up_to_mps), static_thrust, net_thrust (avg_thrust minus propulsion mass), thrust_per_watt"
+  }
+}
