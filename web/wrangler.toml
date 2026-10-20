@@ -9,4 +9,4 @@ compatibility_date = "2024-09-23"
 [[d1_databases]]
 binding = "DB"
 database_name = "propcalc-shared"
-database_id = "PASTE-YOUR-DATABASE-ID-HERE"
+database_id = "56692b81-6a86-4342-9944-f47ba67768a1"
