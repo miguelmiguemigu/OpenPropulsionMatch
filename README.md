@@ -1,5 +1,8 @@
 # propcalc – propulsion combination optimiser (SAE Aero Design Micro Class)
 
+DATA IS FROM APC & rcplanes.online
+
+
 Tries every legal **motor × prop × ESC × battery** from your data files, ranks them and draws graphs.
 New here? Start with **[GUIDE.md](GUIDE.md)** (step-by-step usage). This README is the reference: files, columns, model.
 
