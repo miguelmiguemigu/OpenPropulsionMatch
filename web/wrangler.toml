@@ -1,0 +1,12 @@
+# Cloudflare settings for the propcalc website. Used by:  cd web && npx wrangler pages deploy
+name = "propcalc"
+pages_build_output_dir = "../site"
+compatibility_date = "2024-09-23"
+
+# Shared component library (team additions). Create the database once with
+#   npx wrangler d1 create propcalc-shared
+# and paste the database_id it prints below.
+[[d1_databases]]
+binding = "DB"
+database_name = "propcalc-shared"
+database_id = "PASTE-YOUR-DATABASE-ID-HERE"

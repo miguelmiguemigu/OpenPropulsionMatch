@@ -4,8 +4,9 @@ __pycache__/
 *.pyc
 .venv/
 
-# Website version (kept local, not published)
-web/
+# Website: the source in web/ is tracked; libraries are downloaded by web/fetch_vendor.py,
+# site/ is built by web/build_site.py
+web/vendor/
 web2/
 site/
 

@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>propcalc</title>
+<meta name="description" content="Propulsion combination optimiser for SAE Aero Design Micro Class">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="3.2"/><path d="M16 12.8C14 7 15 2.5 18.5 2.2c2.6-.2 2.3 5-2.5 10.6zM16 19.2c2 5.8 1 10.3-2.5 10.6-2.6.2-2.3-5 2.5-10.6z"/></svg>
+    <div>
+      <div class="title">propcalc</div>
+      <div class="sub">Micro Class propulsion optimiser · Chicken Wings</div>
+    </div>
+  </div>
+  <div id="status" class="status"><span class="dot"></span><span id="status-text">Starting…</span></div>
+</header>
+
+<!-- access gate -->
+<section id="gate" class="gate" hidden>
+  <form id="gate-form" class="gate-card" autocomplete="on">
+    <h1>Enter the access phrase</h1>
+    <p class="muted">The calculator and team data on this page are encrypted. Ask a team member for the phrase.</p>
+    <label class="field"><span>Access phrase</span>
+      <input id="gate-input" type="password" autocomplete="current-password" required autofocus>
+    </label>
+    <label class="check"><input id="gate-remember" type="checkbox"> Remember on this device</label>
+    <button class="btn primary wide" type="submit" id="gate-btn">Unlock</button>
+    <p id="gate-error" class="error" role="alert"></p>
+  </form>
+</section>
+
+<main id="app" hidden>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="search" aria-selected="true">Search</button>
+    <button role="tab" data-tab="single">One combination</button>
+    <button role="tab" data-tab="components">Components</button>
+    <button role="tab" data-tab="settings">Plane &amp; settings</button>
+    <button role="tab" data-tab="help">Help</button>
+  </nav>
+
+  <div id="dirty" class="banner" hidden>
+    You changed components or settings. These changes last until you reload the page.
+    <button class="btn small" data-action="export">Download data folder (.zip)</button>
+  </div>
+
+  <!-- SEARCH -->
+  <section class="panel" data-panel="search">
+    <div class="grid-2">
+      <div class="card">
+        <h2>Search</h2>
+        <div class="seg" role="radiogroup" aria-label="Ranking">
+          <label><input type="radio" name="mode" value="plane" checked><span>Best flight score<small>uses the plane</small></span></label>
+          <label><input type="radio" name="mode" value="noplane"><span>Propulsion only<small>no plane needed</small></span></label>
+        </div>
+        <div class="row-fields">
+          <label class="field" id="metric-wrap"><span>Rank by</span>
+            <select id="opt-metric">
+              <option value="net_thrust">Net thrust (mean thrust − propulsion weight)</option>
+              <option value="avg_thrust">Mean thrust 0–12 m/s</option>
+              <option value="static_thrust">Static thrust</option>
+              <option value="thrust_per_watt">Static thrust per watt</option>
+            </select>
+          </label>
+          <label class="field"><span>Battery current cap (A)</span>
+            <input id="opt-maxcur" type="number" min="1" step="1" placeholder="none">
+            <small>Same cap for every combination – set it to your ESC current limit.</small>
+          </label>
+          <label class="field"><span>Show top</span>
+            <input id="opt-top" type="number" min="1" max="200" step="1" value="10">
+          </label>
+        </div>
+        <details class="adv">
+          <summary>Advanced</summary>
+          <div class="row-fields">
+            <label class="field"><span>Current limit mode</span>
+              <select id="opt-limit">
+                <option value="cap">cap – assume an ESC current limit</option>
+                <option value="reject">reject – drop anything over a rating</option>
+                <option value="ignore">ignore – no limits</option>
+              </select>
+            </label>
+            <label class="field"><span>Props kept after pre-screen</span><input id="opt-pp" type="number" min="0" step="1"><small>0 = all (slower)</small></label>
+            <label class="field"><span>Motors kept after pre-screen</span><input id="opt-pm" type="number" min="0" step="1"><small>0 = all (slower)</small></label>
+            <label class="field"><span>Mission simulations</span><input id="opt-pt" type="number" min="0" step="1"><small>best N by net thrust, 0 = all</small></label>
+          </div>
+        </details>
+        <p class="muted" id="sel-summary"></p>
+        <div class="actions">
+          <button class="btn primary" id="run-btn">Run search</button>
+          <span id="run-time" class="muted"></span>
+        </div>
+        <div id="progress" class="progress" hidden>
+          <div class="bar"><div id="progress-fill"></div></div>
+          <div id="progress-text" class="muted"></div>
+        </div>
+        <details class="log"><summary>Calculation log</summary><pre id="log"></pre></details>
+      </div>
+      <div class="card" id="best-card">
+        <h2>Best combination</h2>
+        <p class="muted">Run a search to see the result.</p>
+      </div>
+    </div>
+
+    <div id="results" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2 id="res-title">Top combinations</h2>
+          <div class="btns">
+            <button class="btn small" id="dl-csv">Download all results (.csv)</button>
+          </div>
+        </div>
+        <p class="muted small">Click a row to open it in “One combination”. Differences under ~2 % are a tie.</p>
+        <div class="table-wrap"><table id="res-table" class="data"></table></div>
+      </div>
+      <div class="charts">
+        <div class="card"><h3 id="ch-rank-title">Ranking</h3><div class="chart tall"><canvas id="ch-rank"></canvas></div></div>
+        <div class="card"><h3>Thrust and current vs airspeed – top 5</h3><div class="chart tall"><canvas id="ch-curves"></canvas></div></div>
+        <div class="card"><h3 id="ch-scatter-title">Every combination</h3><div class="chart"><canvas id="ch-scatter"></canvas></div></div>
+        <div class="card" id="tds-card"><h3 id="ch-tds-title">Thrust available vs drag (TDS graph)</h3><div class="chart"><canvas id="ch-tds"></canvas></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SINGLE -->
+  <section class="panel" data-panel="single" hidden>
+    <div class="card">
+      <h2>Check one combination</h2>
+      <div class="row-fields four">
+        <label class="field"><span>Motor</span><select id="s-motor"></select></label>
+        <label class="field"><span>Prop</span><select id="s-prop"></select></label>
+        <label class="field"><span>ESC</span><select id="s-esc"></select></label>
+        <label class="field"><span>Battery</span><select id="s-bat"></select></label>
+      </div>
+      <div class="row-fields">
+        <label class="check"><input type="checkbox" id="s-plane" checked> Also fly the mission with the plane</label>
+        <span class="muted small">Uses the current cap and limit mode from the Search tab.</span>
+      </div>
+      <div class="actions"><button class="btn primary" id="s-run">Calculate</button></div>
+    </div>
+    <div id="s-out" hidden>
+      <div class="grid-2">
+        <div class="card"><h3>Summary</h3><div id="s-summary"></div></div>
+        <div class="card"><h3>Full throttle vs airspeed</h3><div class="chart"><canvas id="ch-single"></canvas></div></div>
+      </div>
+      <div class="card"><h3>Operating points (fresh pack, full throttle)</h3><div class="table-wrap"><table id="s-table" class="data"></table></div></div>
+    </div>
+  </section>
+
+  <!-- COMPONENTS -->
+  <section class="panel" data-panel="components" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2>Components</h2>
+        <div class="btns">
+          <button class="btn small" data-action="export">Download data folder (.zip)</button>
+        </div>
+      </div>
+      <p class="muted">Tick what the search should try. Anything you add or edit can be shared with the team; everything else only lasts until you reload.</p>
+      <div class="sharebar">
+        <div id="share-status" class="small">Connecting to the team library…</div>
+        <div id="share-controls" class="row-fields" hidden>
+          <label class="field"><span>Your name <span class="muted">(shown on what you share)</span></span><input id="share-author" autocomplete="name" maxlength="60"></label>
+          <label class="check"><input type="checkbox" id="share-on" checked> Share what I add or edit with the team</label>
+          <button class="btn small" id="share-refresh" type="button">Refresh</button>
+        </div>
+        <details id="share-history"><summary>Recent changes</summary><div id="share-hist-list"></div></details>
+      </div>
+      <div class="subtabs" role="tablist">
+        <button data-kind="motors" aria-selected="true">Motors <span class="count"></span></button>
+        <button data-kind="props">Props <span class="count"></span></button>
+        <button data-kind="escs">ESCs <span class="count"></span></button>
+        <button data-kind="batteries">Batteries <span class="count"></span></button>
+      </div>
+      <div class="toolbar">
+        <input id="c-filter" type="search" placeholder="Filter…" aria-label="Filter">
+        <button class="btn small" id="c-all">Tick shown</button>
+        <button class="btn small" id="c-none">Untick shown</button>
+        <label class="check small"><input type="checkbox" id="c-only"> Only ticked</label>
+        <span class="spacer"></span>
+        <button class="btn small primary" id="c-add">Add</button>
+      </div>
+      <div class="table-wrap tall"><table id="c-table" class="data comp"></table></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Upload a propeller</h3>
+        <p class="muted small">An APC <code>PER3_xxx.dat</code> or <code>.json</code> file (from apcprop.com) or a CSV with columns <code>J, Ct, Cp</code> (first row J = 0). Size is read from the file name if you leave it empty.</p>
+        <div class="row-fields">
+          <label class="field"><span>File</span><input id="up-prop-file" type="file" accept=".dat,.json,.csv,.txt"></label>
+          <label class="field"><span>Name</span><input id="up-prop-name" placeholder="from file name"></label>
+          <label class="field"><span>Diameter (in)</span><input id="up-prop-d" type="number" step="any"></label>
+          <label class="field"><span>Pitch (in)</span><input id="up-prop-p" type="number" step="any"></label>
+          <label class="field"><span>Mass (g)</span><input id="up-prop-m" type="number" step="any" value="30"></label>
+          <label class="field"><span>Data source</span>
+            <select id="up-prop-cal">
+              <option value="">Automatic (APC .dat/.json → APC calibration, CSV → as measured)</option>
+              <option value="apc_per3">APC website data (scale like APC)</option>
+              <option value="uiuc">UIUC database (scale like UIUC)</option>
+              <option value="uploaded">Own thrust-stand / tunnel test (use as measured)</option>
+            </select>
+            <small>APC and UIUC numbers read high – they are scaled to your bench tests. Real measurements are used as they are.</small>
+          </label>
+        </div>
+        <div class="actions"><button class="btn" id="up-prop-btn">Add propeller</button></div>
+      </div>
+      <div class="card">
+        <h3>Import wind-tunnel / thrust-stand logs</h3>
+        <p class="muted small">Pick a folder with one sub-folder per prop (named like <code>1208</code> = 12×8) holding RCbenchmark/Tyto CSV logs named with the airspeed (<code>static</code>, <code>10m-s</code>…).</p>
+        <div class="row-fields">
+          <label class="field"><span>Folder</span><input id="up-tun" type="file" webkitdirectory multiple></label>
+          <label class="field"><span>Air density (kg/m³)</span><input id="up-tun-rho" type="number" step="any" value="1.2"></label>
+          <label class="field"><span>Ignore below (RPM)</span><input id="up-tun-rpm" type="number" step="any" value="4000"></label>
+          <label class="field"><span>Prop mass (g)</span><input id="up-tun-m" type="number" step="any" value="30"></label>
+        </div>
+        <div class="actions"><button class="btn" id="up-tun-btn">Import logs</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Replace a whole data file</h3>
+      <p class="muted small">For bigger edits: change the file in Excel / a text editor and upload it here. It is checked before it replaces the current one.</p>
+      <div class="row-fields">
+        <label class="field"><span>File to replace</span>
+          <select id="rep-name">
+            <option>motors.csv</option><option>props.csv</option><option>escs.csv</option><option>batteries.csv</option>
+            <option>calibration.csv</option><option>plane.json</option><option>config.json</option>
+          </select>
+        </label>
+        <label class="field"><span>New file</span><input id="rep-file" type="file" accept=".csv,.json,.txt"></label>
+      </div>
+      <div class="actions"><button class="btn" id="rep-btn">Replace</button></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" data-panel="settings" hidden>
+    <div class="card">
+      <div class="card-head">
+        <h2>Plane</h2>
+        <div class="btns">
+          <button class="btn small" id="pl-reset">Reset to saved</button>
+          <button class="btn small" id="pl-dl">Download plane.json</button>
+        </div>
+      </div>
+      <p class="muted small">Masses exclude payload and propulsion. The default airframe is only an example – put in your design before trusting payload numbers.</p>
+      <div id="plane-form"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>Rules and model</h2>
+        <div class="btns">
+          <button class="btn small" id="cf-reset">Reset to saved</button>
+          <button class="btn small" id="cf-dl">Download config.json</button>
+        </div>
+      </div>
+      <div id="config-form"></div>
+    </div>
+  </section>
+
+  <!-- HELP -->
+  <section class="panel prose" data-panel="help" hidden>
+    <div class="card">
+      <h2>How to use it</h2>
+      <ol>
+        <li><b>Plane &amp; settings</b> – enter your airframe (wing area, CLmax, CD0, empty mass, drag articles, cruise speed). Skip this if you only want propulsion numbers.</li>
+        <li><b>Components</b> – tick the motors, props, ESCs and batteries to try. Add your own (forms, prop files, tunnel logs).</li>
+        <li><b>Search</b> – choose <i>Best flight score</i> (uses the plane) or <i>Propulsion only</i>, set the current cap (your ESC limit, e.g. 80 A) and press <b>Run search</b>.</li>
+        <li>Click any result row to see it in detail in <b>One combination</b>.</li>
+      </ol>
+      <h3>Reading the results</h3>
+      <ul>
+        <li><b>Static / @10 m/s</b> – thrust in grams-force at standstill and at 10 m/s, full throttle, fresh pack.</li>
+        <li><b>Net</b> – mean thrust 0–12 m/s minus the weight of motor + prop + ESC + battery.</li>
+        <li><b>Payload / score</b> – heaviest takeoff that still lifts off in the takeoff limit, climbs and finishes the mission on 80 % of the pack; score = 1.25 × payload (lb) × drag articles.</li>
+        <li>Warnings: <i>needs current limit</i> = only works with the ESC current limit set; <i>Rm/I0 estimated</i> = motor from the rcplanes list, check its datasheet.</li>
+      </ul>
+      <h3>Good to know</h3>
+      <ul>
+        <li>Everything runs in your browser – nothing is sent anywhere. Edits last until you reload; use <b>Download data folder</b> to keep them.</li>
+        <li>Accuracy is about ±5–10 % until checked on a thrust stand. Differences under ~2 % are a tie.</li>
+        <li>Model: T = Ct·ρ·n²·D⁴, P = Cp·ρ·n³·D⁵, I = Q/Kt + I0, V = Voc − I·R, solved for the RPM where motor torque = prop torque. Prop data are scaled to real bench tests.</li>
+        <li>Same calculator as <code>propcalc.py</code> – see README.md and GUIDE.md in the folder for all details.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <form class="modal-card" id="modal-form">
+    <div class="card-head"><h2 id="modal-title"></h2><button type="button" class="btn small ghost" id="modal-x" aria-label="Close">✕</button></div>
+    <div id="modal-extra"></div>
+    <div id="modal-fields" class="row-fields"></div>
+    <p id="modal-error" class="error"></p>
+    <div class="actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="modal-cancel">Cancel</button></div>
+  </form>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="vendor/chart.umd.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

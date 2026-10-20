@@ -5,6 +5,8 @@ DATA IS FROM APC & rcplanes.online
 
 Tries every legal **motor × prop × ESC × battery** from your data files, ranks them and draws graphs.
 New here? Start with **[GUIDE.md](GUIDE.md)** (step-by-step usage). This README is the reference: files, columns, model.
+There is also a **website version** (same calculator, runs in the browser), deployed to Cloudflare Pages on every push to
+`main` - see [web/WEB.md](web/WEB.md).
 
 Current library: 182 motors (8 datasheet + 174 from rcplanes.online with estimated Rm/I0), 208 props (189 switched on)
 (APC PER3, UIUC propDB, own wind-tunnel data), 5 ESCs, 5 batteries.

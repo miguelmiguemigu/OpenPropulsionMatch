@@ -1,0 +1,40 @@
+# Builds the website (web/build_site.py) and publishes it to Cloudflare Pages on every push / merge to main.
+# Needs repo secrets: PROPCALC_PASSPHRASE, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  (see web/WEB.md)
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # "Run workflow" button for a manual redeploy
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download browser libraries
+        run: python web/fetch_vendor.py
+
+      - name: Build site
+        env:
+          PROPCALC_PASSPHRASE: ${{ secrets.PROPCALC_PASSPHRASE }}
+        run: |
+          pip install cryptography
+          python web/build_site.py
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web
+          command: pages deploy --branch main
