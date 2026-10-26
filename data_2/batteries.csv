@@ -4,4 +4,12 @@ SLS Quantum 1000 65C,3,1000,102,18,65,R assumed; 65C max 20 s per SLS
 CNHL MiniStar 1000 100C,3,1000,98,15,100,R assumed; T-plug - swap to XT60
 GNB 930 120C,3,930,77,13.5,120,R assumed; XT30 - swap to XT60 https://www.rotorama.cz/product/gnb-930mah-3s-120c
 Tattu R-Line 850 150C,3,850,81,13.5,150,R assumed; XT30 - swap to XT60
-GNB 1000 70C,3,1000,66,20,70,R assumed; XT30 - swap to XT60
+GNB 1000 70C,3,1000,66,15,70,R assumed; XT30 - swap to XT60
+Zeee 850 100C,3,850,100,15,100,R assumed; XT30 - swap to XT60
+Turning 850 70C,3,850,71,15,70,R assumed; XT30 - swap to XT60
+Turning 900 75C,3,900,84,15,75,R assumed; XT30 - swap to XT60
+NANO Tech 800 80C,3,800,81,15,80,R assumed; XT60
+NANO Tech 900 80C,3,900,87,15,80,R assumed; XT60
+OVONIC 800 80C,3,800,75,15,80,R assumed; EC2
+OVONIC 850 80C,3,800,75,15,80,R assumed; XT60
+OVONIC 850 150C,3,800,75,15,150,R assumed; XT60

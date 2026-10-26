@@ -12,7 +12,7 @@ There is also a **website version** (same calculator, runs in the browser), depl
 `main` - see [web/WEB.md](web/WEB.md).
 
 Current library (`data_2/`): 124 motors (8 datasheet + 116 from rcplanes.online with estimated Rm/I0), 20 APC PER3 props
-(19 switched on; 203 APC tables in `data_2/propellers/APC_DAT_Files/`), 5 ESCs, 6 batteries.
+(19 switched on; 203 APC tables in `data_2/propellers/APC_DAT_Files/`), 5 ESCs, 14 batteries.
 
 ```
 python propcalc.py                          # rank by estimated flight score (uses data_2/plane.json)
@@ -180,8 +180,7 @@ Notes on the 2024 data (T-Motor 2826, Mezon 55, 11x8 / 12x8 / 14x7):
 ## Caveats
 - Pack resistances in `batteries.csv` are **assumed** – measure yours (charger IR readout) and edit.
 - `plane.json` is an **illustrative** airframe – replace it with your design before trusting payload/score.
-- The "OddityRC Vortex 100A" and "Sequre 28120 120A" rows in `escs.csv` are **placeholders** – put in your real ESC's mass
-  and rating.
+- ESC resistances in `escs.csv` are **assumed** (3 mΩ) – check masses and ratings against the ESCs you actually use.
 - Motors from rcplanes.online have **estimated** Rm/I0 – add datasheet values before choosing one.
 - Differences under ~2 % between combinations are a tie.
 - Expect ±5–10 % until checked on a thrust stand.

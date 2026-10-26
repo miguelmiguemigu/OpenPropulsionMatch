@@ -2,5 +2,5 @@ name,cont_a,burst_a,mass_g,r_mohm,notes
 Flycolor Raptor5 50A,50,50,10.2,3,BLHeli_32; no BEC
 Sequre SQESC 2670 70A,70,110,9,3,BLHeli_32/AM32; bare PCB weight
 Skystars Jupiter Single 80A ESC,80,100,16,3,BlHeli_32 firmware; aluminum heatsink
-OddityRC Vortex 100A ,100,120,15,3,PLACEHOLDER - enter your real ESC mass and rating
-Sequre 28120 120A 2-8S AM32,120,150,23,3,PLACEHOLDER - enter your real ESC mass and rating
+OddityRC Vortex 100A ,100,120,15,3,
+Sequre 28120 120A 2-8S AM32,120,150,23,3,

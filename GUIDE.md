@@ -89,7 +89,7 @@ All files are plain CSV/JSON. Edit them in Excel, Numbers or a text editor.
 | `plane.json` | **you have a real airframe design**: wing area, CLmax, CD0, empty mass, drag articles, cruise speed. The current values are only an example, so payload numbers are rough until you replace them. |
 | `motors.csv` | adding a motor: Kv, Rm (mΩ), I0 (A @ volts), mass, max current. Put `no` in `include` to skip one. |
 | `props.csv` | turning props on/off (`include` = `no`), correcting a prop's mass |
-| `escs.csv` | **put in your real ESC**: the "OddityRC Vortex 100A" and "Sequre 28120 120A" rows are placeholders |
+| `escs.csv` | adding an ESC: continuous / burst current, mass. Check the values against the ESC you actually use. |
 | `batteries.csv` | adding a pack. If you can, put the measured internal resistance (charger IR reading, whole pack, mΩ) in `r_mohm`. |
 | `config.json` | rules (cells, mAh, prop size), air density, a permanent current cap (`model.max_system_current_a`) |
 
