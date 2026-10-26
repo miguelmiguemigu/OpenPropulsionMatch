@@ -149,6 +149,8 @@ The `site` folder (built with `--no-sharing`) works on any static host that uses
 - **GitHub Pages:** on a free account the repository must be public. Only put the built `site` folder in it. `bundle.bin` is encrypted, but the raw `data/` folder is not.
 
 The `_headers` file in `site/` sets caching on Cloudflare and Netlify. Other hosts ignore it.
+Each build also stamps a build id into the file URLs (`app.js?v=…`, `worker.js?v=…`, `bundle.bin?v=…`), so after a
+deploy browsers always load the new script and data together, even where a CDN or domain setting caches files for hours.
 
 ---
 

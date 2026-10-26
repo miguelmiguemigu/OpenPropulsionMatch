@@ -25,6 +25,7 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.dirname(HERE)
 STATIC = ["index.html", "style.css", "app.js", "worker.js", "favicon.svg"]
+STAMPED = {"index.html", "app.js"}  # files whose __BUILD__ placeholder becomes the build id
 SKIP_DATA = {"all_motor.txt", ".DS_Store"}
 ITERATIONS = 310000
 SHARE_SALT, SHARE_ITER = b"propcalc-share-v1", 100000  # must match app.js
@@ -92,11 +93,23 @@ def main():
     data, n_files = bundle_zip(a.data)
     blob = encrypt(data, phrase) if phrase else b"PCB0" + data
 
+    # build id for the asset URLs (app.js?v=..., worker.js?v=..., bundle.bin?v=...): a new deploy gets new URLs, so no
+    # browser or CDN cache can pair the new page with an old script or bundle
+    h = hashlib.sha256(blob)
+    for f in STATIC:
+        h.update(open(os.path.join(HERE, f), "rb").read())
+    build = h.hexdigest()[:12]
+
     if os.path.isdir(a.out):
         shutil.rmtree(a.out)
     os.makedirs(a.out)
     for f in STATIC:
-        shutil.copy2(os.path.join(HERE, f), os.path.join(a.out, f))
+        if f in STAMPED:
+            txt = open(os.path.join(HERE, f), encoding="utf-8").read()
+            with open(os.path.join(a.out, f), "w", encoding="utf-8") as fo:
+                fo.write(txt.replace("__BUILD__", build))
+        else:
+            shutil.copy2(os.path.join(HERE, f), os.path.join(a.out, f))
     shutil.copytree(os.path.join(HERE, "vendor"), os.path.join(a.out, "vendor"))
     with open(os.path.join(a.out, "bundle.bin"), "wb") as f:
         f.write(blob)
@@ -114,7 +127,7 @@ def main():
         f.write("User-agent: *\nDisallow: /\n")
 
     size = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(a.out) for f in fs)
-    print(f"Built {a.out}")
+    print(f"Built {a.out}  (build {build})")
     print(f"  bundle: propcalc.py + {n_files} data files, {len(blob) / 1024:.0f} kB "
           f"({'encrypted with your phrase' if phrase else 'NOT encrypted - open to anyone with the link'})")
     print(f"  total site size {size / 1e6:.1f} MB")

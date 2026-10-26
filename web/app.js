@@ -22,8 +22,12 @@ function download(name, data, type = "application/octet-stream") {
   a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// build_site.py stamps a build id into the file URLs, so a browser can never mix a new page with a cached old
+// app.js / worker.js / bundle.bin (the custom domain's browser cache keeps static files for hours)
+const BUILD = "__BUILD__";
+
 // ------------------------------------------------------------------ worker RPC
-const worker = new Worker("worker.js");
+const worker = new Worker("worker.js?v=" + BUILD);
 let rpcId = 0; const pending = new Map();
 let pyReady = false;
 worker.onmessage = (ev) => {
@@ -57,7 +61,7 @@ let bundle = null;
 
 // ------------------------------------------------------------------ access gate + decryption
 async function fetchBundle() {
-  const r = await fetch("bundle.bin", { cache: "no-cache" });
+  const r = await fetch("bundle.bin?v=" + BUILD, { cache: "no-cache" });
   if (!r.ok) throw new Error("bundle.bin not found (" + r.status + ") – build the site with web/build_site.py");
   return new Uint8Array(await r.arrayBuffer());
 }
