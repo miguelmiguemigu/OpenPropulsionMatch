@@ -11,8 +11,8 @@ New here? Start with **[GUIDE.md](GUIDE.md)** (step-by-step usage). This README 
 There is also a **website version** (same calculator, runs in the browser), deployed to Cloudflare Pages on every push to
 `main` - see [web/WEB.md](web/WEB.md).
 
-Current library: 182 motors (8 datasheet + 174 from rcplanes.online with estimated Rm/I0), 208 props (189 switched on)
-(APC PER3, UIUC propDB, own wind-tunnel data), 5 ESCs, 5 batteries.
+Current library (`data_2/`): 124 motors (8 datasheet + 116 from rcplanes.online with estimated Rm/I0), 20 APC PER3 props
+(19 switched on; 203 APC tables in `data_2/propellers/APC_DAT_Files/`), 5 ESCs, 6 batteries.
 
 ```
 python propcalc.py                          # rank by estimated flight score (uses data_2/plane.json)
@@ -20,7 +20,7 @@ python propcalc.py --no-plane               # ignore the plane: rank on thrust m
 python propcalc.py --no-plane --metric avg_thrust      # net_thrust (default) | avg_thrust | static_thrust | thrust_per_watt
 python propcalc.py --max-current 80         # compare everything at the same battery-current cap (recommended)
 python propcalc.py --limit-mode reject      # only combos that never exceed a rating (no current limiting)
-python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Example 80A ESC (EDIT)" "CNHL MiniStar 1000 100C"
+python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Skystars Jupiter Single 80A ESC" "CNHL MiniStar 1000 100C"
 python propcalc.py --data otherdata --plane otherplane.json --out myresults --top 15
 python propcalc.py --prescreen 20 --no-plots          # quicker test run
 ```
@@ -36,6 +36,7 @@ Run from inside the `propcalc` folder.
 | `--metric M` | ranking without a plane: `avg_thrust`, `static_thrust`, `net_thrust`, `thrust_per_watt` |
 | `--limit-mode M` | `cap` (default), `reject`, `ignore` - see *Current limit modes* |
 | `--max-current A` | extra battery-current cap for every combination (= `model.max_system_current_a`) |
+| `--two-blade-only` | leave 3/4-blade props out (their calibration from 2-blade bench tests is unverified) |
 | `--prescreen N` | keep the best N props and N motors after the quick pre-screen (0 = everything) |
 | `--out FOLDER` | output folder (default `results/`) |
 | `--top N` | how many to print / plot (default 10) |
@@ -58,7 +59,7 @@ Run from inside the `propcalc` folder.
 | file | columns |
 |---|---|
 | `motors.csv` | name, brand, kv, rm_mohm, i0_a, i0_voltage, mass_g, max_current_a, rating_note, source, include (`no` = skip). `source` containing "estimated" marks Rm/I0 as estimated |
-| `motor_list_all.csv` | full rcplanes list (8,081 motors) with estimated Rm/I0 - reference only, not searched |
+| `motor_list_all.csv` | full rcplanes list (8,081 motors) with estimated Rm/I0 - reference only, not searched; written by `--import-motors` |
 | `props.csv` | name, diameter_in, pitch_in, mass_g, format, file, cal_group, max_rpm, include (`no` = skip), notes |
 | `props/*.csv` | `J,Ct,Cp` table (static row J=0 first). `format=apc` reads APC `PER3_*.dat` directly (all RPM tables); `format=uiuc` reads `static.txt;tunnel.txt` |
 | `escs.csv` | name, cont_a, burst_a, mass_g, r_mohm, notes |
@@ -77,6 +78,9 @@ Run from inside the `propcalc` folder.
 | `usable_capacity_fraction` | 0.8 | share of the pack's mAh the mission may use |
 | `speeds_mps` | 0-20 | airspeeds for curves |
 | `current_limit_mode` | cap | `cap` / `reject` / `ignore` |
+| `battery_rating` | continuous | pack current limit from `c_cont` (`continuous`) or `c_burst` (`burst`) |
+| `multi_blade_props` | include | `exclude` = 2-blade props only, same as `--two-blade-only` (blade count from the name, e.g. `12x7E-3`, or a `blades` column in `props.csv`) |
+| `thrust_cal_extrapolation` | hold | thrust factor beyond the fastest bench point: `hold`, `linear`, `flat` (also `--thrust-cal`) |
 | `max_system_current_a` | - | optional cap for every combination (same as `--max-current`) |
 | `prescreen_props` / `prescreen_motors` | 40 / 15 | how many props / motors survive the pre-screen |
 | `plane_evaluate_top` | 400 | combinations that get the full mission simulation (0 = all) |
@@ -93,14 +97,21 @@ Props from another source need their own `cal_group` and at least one bench poin
 
 ## How it works
 Per operating point: `T = Ct·ρ·n²·D⁴`, `P = Cp·ρ·n³·D⁵`, `I_motor = Q/Kt + I0`, `I_batt = throttle·I_motor`,
-`V = Voc − I_batt·(R_pack + R_esc + R_wiring)`, solved for the RPM where motor torque = prop torque.
-Prop data is scaled per `cal_group` to match real bench tests (torque factor + RPM-dependent thrust factor).
+`V_batt = Voc − I_batt·(R_pack + R_wiring)`, `throttle·V_batt = RPM/Kv + I_motor·(Rm + R_esc)`, solved for the RPM where
+motor torque = prop torque. The ESC resistance is on the motor side because its FETs carry the motor current for the whole
+PWM period (synchronous rectification); pack and leads carry the battery current.
+Prop data is scaled per `cal_group` to match real bench tests: a torque factor, and a thrust factor that depends on the
+blade tip speed `π·D·n` (so 12" bench points carry over to 10-11" props at the same tip speed, not the same RPM).
+Prop RPM limits follow APC: 150,000 / D for thin-electric props (65,000 SF, 105,000 MR, 120,000 folding).
 
 **Current limit modes** (`config.json` or `--limit-mode`):
-`cap` (default) assumes an ESC current limit at the lowest of motor / ESC / battery rating and flags combos that need it;
-`reject` drops anything that would exceed a rating at full throttle; `ignore` applies no limits.
-`--max-current` / `max_system_current_a` adds one more cap on top, the same for all combinations - use it to compare motors
-fairly (several rcplanes motors have burst-type ratings) and set it to what your ESC current limit will be.
+`cap` (default) assumes the ESC lowers the throttle so that the **motor current** stays within the motor and ESC ratings and
+the **battery current** within the pack rating (and `max_system_current_a`), and flags combos that need it. The two differ:
+at part throttle `I_motor = I_batt / throttle`, so an over-propped motor held at 79 A battery current would carry ~97 A in
+its windings. `reject` drops anything that would exceed a rating at full throttle; `ignore` applies no limits.
+`--max-current` / `max_system_current_a` adds one more battery-current cap, the same for all combinations - use it to compare
+motors fairly (several rcplanes motors have burst-type ratings) and set it to what your ESC current limit will be.
+`results.csv` lists both limits (`motor_limit_A`, `batt_limit_A`) and the peak motor current (`peak_motor_A`).
 
 **With a plane**, each combination gets the heaviest takeoff mass that still lifts off within
 `takeoff_distance_limit_m × takeoff_margin`, climbs at ≥ `min_climb_rate_mps`, and finishes the mission
@@ -169,8 +180,8 @@ Notes on the 2024 data (T-Motor 2826, Mezon 55, 11x8 / 12x8 / 14x7):
 ## Caveats
 - Pack resistances in `batteries.csv` are **assumed** – measure yours (charger IR readout) and edit.
 - `plane.json` is an **illustrative** airframe – replace it with your design before trusting payload/score.
-- The "Example 80A / 100A / 150A ESC (EDIT)" rows are **placeholders** – put in your real ESC's mass and rating
-  (without a current cap the 150A placeholder lets motors draw over 100 A, which is not realistic for a 1000 mAh pack).
+- The "OddityRC Vortex 100A" and "Sequre 28120 120A" rows in `escs.csv` are **placeholders** – put in your real ESC's mass
+  and rating.
 - Motors from rcplanes.online have **estimated** Rm/I0 – add datasheet values before choosing one.
 - Differences under ~2 % between combinations are a tie.
 - Expect ±5–10 % until checked on a thrust stand.

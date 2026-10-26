@@ -7,10 +7,10 @@ Uses the propcalc model and data folder, draws every thrust graph for one
 motor + prop + ESC + battery and writes the numbers behind them as csv.
 
     python3 thrust_graphs.py                                  # best combination of results/results.csv
-    python3 thrust_graphs.py "X2820 1250kV" "APC 12x8E" "Example 80A ESC (EDIT)" "GNB 930 120C"
+    python3 thrust_graphs.py "X2820 1250kV" "APC 12x8E" "Skystars Jupiter Single 80A ESC" "GNB 930 120C"
     python3 thrust_graphs.py --compare "APC 12x8E" "APC 12x6E" --out results/aero_12x8E
 
-Graphs 09-11 need the airframe (data/plane.json); skip them with --no-plane.
+Graphs 09-11 need the airframe (data_2/plane.json); skip them with --no-plane.
 Graphs 13-15: motor torque, propwash, cruise current and flight time for a given drag.
 """
 import argparse
@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 
 import propcalc as pc
 
-G, LBF = pc.G, 4.4482216
+G, LBF = pc.G, pc.LBF
 SURFACE, INK, INK2, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 CAT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
 SEQ = ["#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b"]
@@ -90,7 +90,7 @@ def main():
     ap.add_argument("--no-plane", action="store_true", help="skip the graphs that need the airframe")
     ap.add_argument("--out", default=os.path.join(here, "results", "aero"), help="output folder")
     ap.add_argument("--vmax", type=float, default=30.0, help="highest airspeed, m/s")
-    ap.add_argument("--compare", nargs="*", default=["APC 12x8E", "APC 12x6E", "APC 12x7", "Tunnel 12x8 (1208)"],
+    ap.add_argument("--compare", nargs="*", default=["APC 12x8E", "APC 12x6E", "APC 12x7E-3", "APC 11x8E"],
                     help="props drawn against the chosen one on the same motor/ESC/battery")
     a = ap.parse_args()
 
@@ -121,7 +121,8 @@ def main():
     V = np.arange(0.0, a.vmax + 0.01, 1.0)
     cells = bat.cells
     combo = " + ".join(names)
-    lim = f"current limit {s.limit:.0f} A" if s.limit and s.mode == "cap" else "no current limit"
+    lim = (f"current limit motor {s.limit_motor:.0f} A / battery {s.limit_batt:.0f} A" if s.limit and s.mode == "cap"
+           else "no current limit")
     sub = f"{combo}  |  {lim}, rho {rho0} kg/m3  |  propcalc model, not a measurement"
     N = lambda crv: np.array([p["T"] for p in crv])
 
@@ -231,7 +232,7 @@ def main():
         ax.set_ylim(0, None); ax.set_xlim(0, None); ax.set_xlabel("Advance ratio  J = V / (n D)"); ax.set_title(lab, loc="left", fontsize=10)
     if len(tabs) > 1:
         axs[0].legend()
-    kt = cal.thrust(prop.group, full[0]["rpm"])
+    kt = cal.thrust(prop.group, full[0]["rpm"], prop.D)
     title(fig, f"Propeller data: {prop.name}  ({prop.D_in:g} x {prop.pitch:g} in)",
           f"raw data file, group '{prop.group}'  |  the model multiplies Ct by {kt:.3f} (at {full[0]['rpm']:.0f} RPM) and Cp by {s.kq:.3f} to match bench tests")
     save(fig, a.out, "07_prop_coefficients.png", files)
@@ -388,7 +389,7 @@ def main():
         w.writerow(["prop", prop.name, f"{prop.mass:g}", f"{prop.D_in:g} x {prop.pitch:g} in = {1000 * prop.D:.0f} mm diameter, RPM limit {prop.max_rpm:.0f}", pr.get("notes", "")])
         w.writerow(["esc", esc.name, f"{esc.mass:g}", f"{esc.cont:g} A continuous, {esc.burst:g} A burst", er.get("notes", "")])
         w.writerow(["battery", bat.name, f"{bat.mass:g}", f"{bat.cells}S {bat.mah:g} mAh, {bat.imax():.0f} A continuous", br.get("notes", "")])
-        w.writerow(["total", "motor + prop + ESC + battery", f"{s.mass:g}", f"system current limit {s.limit:g} A" if s.limit else "", "excludes wiring, receiver, servos, mount"])
+        w.writerow(["total", "motor + prop + ESC + battery", f"{s.mass:g}", f"current limits: motor {s.limit_motor:g} A, battery {s.limit_batt:g} A" if s.limit else "", "excludes wiring, receiver, servos, mount"])
     files.append(p)
 
     # ---- numbers ----------------------------------------------------------------------------
@@ -415,7 +416,8 @@ def main():
         w = csv.writer(f); w.writerow(cols); w.writerows(rows)
     files.append(p)
 
-    print(f"{combo}\n  {lim}, line R {s.r_line * 1000:.1f} mOhm, propulsion mass {s.mass:.0f} g")
+    print(f"{combo}\n  {lim}, R pack+wiring {s.r_line * 1000:.1f} mOhm, R motor+ESC {s.r_motor * 1000:.1f} mOhm, "
+          f"propulsion mass {s.mass:.0f} g")
     print(f"  static thrust {T[0]:.2f} N ({T[0] / G * 1000:.0f} gf), at 10 m/s {Tv(10):.2f} N, at 20 m/s {Tv(20):.2f} N")
     print(f"  fit  T[N] = {c0:.3f} {c1:+.5f} V {c2:+.6f} V^2   (V in m/s, valid 0-{V[ok][-1]:.0f} m/s, max error {err:.2f} N)")
     if plane:

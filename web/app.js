@@ -135,6 +135,7 @@ function applyInfo(info, first = false) {
     $("#opt-pp").value = mdl.prescreen_props ?? 40;
     $("#opt-pm").value = mdl.prescreen_motors ?? 15;
     $("#opt-pt").value = mdl.plane_evaluate_top ?? 400;
+    $("#opt-2blade").checked = String(mdl.multi_blade_props || "include").toLowerCase() === "exclude";
     $("#opt-metric").value = "net_thrust";
     if (!state.plane) { $("input[name=mode][value=noplane]").checked = true; }
     updateMode();
@@ -179,6 +180,7 @@ function runOptions() {
     use_plane: $("input[name=mode]:checked").value === "plane",
     metric: $("#opt-metric").value, max_current: num("#opt-maxcur"), limit_mode: $("#opt-limit").value,
     prescreen_props: num("#opt-pp"), prescreen_motors: num("#opt-pm"), plane_evaluate_top: num("#opt-pt"),
+    two_blade_only: $("#opt-2blade").checked,
     top: num("#opt-top") || 10, config: state.config, plane: state.plane,
     enabled: Object.fromEntries(Object.entries(state.enabled).map(([k, v]) => [k, [...v]])),
   };
@@ -218,13 +220,15 @@ $("#run-btn").addEventListener("click", async () => {
 const COLS_BASE = [
   ["#", null, "num"], ["Motor", "motor"], ["Prop", "prop"], ["ESC", "esc"], ["Battery", "battery"],
   ["Static gf", "static_gf", "num", 0], ["@10 m/s gf", "thrust_10ms", "num", 0], ["Mean gf", "avg_gf", "num", 0],
-  ["Net gf", "net_gf", "num", 0], ["Peak A", "peak_A", "num", 1], ["Mass g", "prop_mass_g", "num", 0], ["g/W", "gpw", "num", 2],
+  ["Net gf", "net_gf", "num", 0], ["Peak A", "peak_A", "num", 1], ["Motor A", "peak_motor_A", "num", 1],
+  ["Mass g", "prop_mass_g", "num", 0], ["g/W", "gpw", "num", 2],
 ];
 const COLS_PLANE = [["Payload kg", "payload_kg", "num", 2], ["Takeoff kg", "tow_kg", "num", 2], ["Mission mAh", "mission_mah", "num", 0], ["Score", "score", "num", 1]];
 
 function renderResults(res) {
   $("#results").hidden = false;
-  const cols = res.plane ? [...COLS_BASE.slice(0, 7), ...COLS_BASE.slice(9, 11), ...COLS_PLANE] : COLS_BASE;
+  const noPlane = new Set(["avg_gf", "net_gf", "gpw"]);  // propulsion-only columns, hidden when ranking by flight score
+  const cols = res.plane ? [...COLS_BASE.filter(([, k]) => !noPlane.has(k)), ...COLS_PLANE] : COLS_BASE;
   $("#res-title").textContent = `Top ${res.rows.length} of ${fmt(res.n)} by ${res.label}`;
   const head = "<thead><tr>" + cols.map(([l, k, c]) => `<th class="${c || ""} ${k === res.key ? "key" : ""}">${esc(l)}</th>`).join("") + "</tr></thead>";
   const body = res.rows.map((r, i) => {
@@ -375,7 +379,8 @@ function renderSingle(res) {
   const s = [[fmt(c[0].gf), "static thrust (gf)"], [fmt(at(10).gf), "thrust at 10 m/s (gf)"],
     [fmt(Math.max(...c.map((p) => p.I_batt)), 1), "peak battery current (A)"], [fmt(c[0].rpm), "static RPM"],
     [fmt(c[0].P_in), "static input power (W)"], [fmt(res.mass_g), "propulsion mass (g)"],
-    [res.limit ? fmt(res.limit) : "none", "current limit (A)"], [fmt(Math.max(...res.uncapped), 0), "draw without limit (A)"]];
+    [res.limit_motor ? `${fmt(res.limit_motor)} / ${fmt(res.limit_batt)}` : "none", "current limit motor / battery (A)"],
+    [fmt(Math.max(...res.uncapped), 0), "draw without limit (A)"]];
   if (res.plane) {
     const p = res.plane;
     s.unshift([fmt(p.score, 1), "flight score"], [`${fmt(p.payload_kg, 2)} kg`, `payload (${fmt(p.payload_lb, 2)} lb)`],
@@ -713,7 +718,7 @@ const CONFIG_META = {
     air_density_kg_m3: ["Air density", "kg/m³"], voc_per_cell_fresh: ["Cell voltage, fresh pack", "V"], voc_per_cell_cruise: ["Cell voltage, cruise", "V"],
     wiring_and_plug_mohm: ["Wiring + plugs", "mΩ"], usable_capacity_fraction: ["Usable battery fraction", "0–1"],
     speeds_mps: ["Airspeeds for curves", "m/s, comma separated"], battery_rating: ["Battery rating used", "continuous / burst"] },
-    skip: ["current_limit_mode", "max_system_current_a", "prescreen_props", "prescreen_motors", "plane_evaluate_top"] },
+    skip: ["current_limit_mode", "max_system_current_a", "prescreen_props", "prescreen_motors", "plane_evaluate_top", "multi_blade_props"] },
   ranking_without_plane: { title: "Propulsion-only ranking", keys: { avg_up_to_mps: ["Average thrust up to", "m/s"] }, skip: ["metric"] },
 };
 function buildForm(container, obj, meta, onChange) {

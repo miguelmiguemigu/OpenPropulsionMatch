@@ -74,13 +74,17 @@
           <label class="field"><span>Show top</span>
             <input id="opt-top" type="number" min="1" max="200" step="1" value="10">
           </label>
+          <div class="field"><span>Props</span>
+            <label class="check"><input id="opt-2blade" type="checkbox"> 2-blade props only</label>
+            <small>Leaves out 3/4-blade props (APC 11x7E-3, 12x7E-3) – their calibration comes from 2-blade bench tests and is unverified.</small>
+          </div>
         </div>
         <details class="adv">
           <summary>Advanced</summary>
           <div class="row-fields">
             <label class="field"><span>Current limit mode</span>
               <select id="opt-limit">
-                <option value="cap">cap – assume an ESC current limit</option>
+                <option value="cap">cap – ESC keeps motor current within motor/ESC rating, battery current within pack rating</option>
                 <option value="reject">reject – drop anything over a rating</option>
                 <option value="ignore">ignore – no limits</option>
               </select>
@@ -278,13 +282,16 @@
         <li><b>Static / @10 m/s</b> – thrust in grams-force at standstill and at 10 m/s, full throttle, fresh pack.</li>
         <li><b>Net</b> – mean thrust 0–12 m/s minus the weight of motor + prop + ESC + battery.</li>
         <li><b>Payload / score</b> – heaviest takeoff that still lifts off in the takeoff limit, climbs and finishes the mission on 80 % of the pack; score = 1.25 × payload (lb) × drag articles.</li>
-        <li>Warnings: <i>needs current limit</i> = only works with the ESC current limit set; <i>Rm/I0 estimated</i> = motor from the rcplanes list, check its datasheet.</li>
+        <li><b>Peak A / Motor A</b> – highest battery current and highest motor (winding) current. At part throttle the motor carries more current than the battery: I_motor = I_batt / throttle.</li>
+        <li>Warnings: <i>needs current limit</i> = only works with the ESC current limit set (the reason says which rating sets it); <i>Rm/I0 estimated</i> = motor from the rcplanes list, check its datasheet.</li>
       </ul>
       <h3>Good to know</h3>
       <ul>
         <li>Everything runs in your browser – nothing is sent anywhere. Edits last until you reload; use <b>Download data folder</b> to keep them.</li>
         <li>Accuracy is about ±5–10 % until checked on a thrust stand. Differences under ~2 % are a tie.</li>
-        <li>Model: T = Ct·ρ·n²·D⁴, P = Cp·ρ·n³·D⁵, I = Q/Kt + I0, V = Voc − I·R, solved for the RPM where motor torque = prop torque. Prop data are scaled to real bench tests.</li>
+        <li>Model: T = Ct·ρ·n²·D⁴, P = Cp·ρ·n³·D⁵, I_motor = Q/Kt + I0, I_batt = throttle·I_motor, V_batt = Voc − I_batt·(R_pack + R_wiring), throttle·V_batt = RPM/Kv + I_motor·(Rm + R_ESC), solved for the RPM where motor torque = prop torque.</li>
+        <li>Current limit (cap mode): the ESC lowers the throttle so the motor current stays within the motor and ESC rating and the battery current within the pack rating and the battery current cap.</li>
+        <li>Prop data are scaled to real bench tests (APC 12x6E): a torque factor and a thrust factor that depends on the blade tip speed. The bench tests are 2-blade, so 3/4-blade props are unverified – tick <i>2-blade props only</i> to leave them out. Prop RPM limits follow APC (150,000 / diameter for thin-electric props).</li>
         <li>Same calculator as <code>propcalc.py</code> – see README.md and GUIDE.md in the folder for all details.</li>
       </ul>
     </div>

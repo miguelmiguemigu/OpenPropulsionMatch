@@ -9,7 +9,7 @@ motor x propeller x ESC x battery, ranks them and draws graphs of the best ones.
     data/motors.csv       name,brand,kv,rm_mohm,i0_a,i0_voltage,mass_g,max_current_a,...
     data/props.csv        name,diameter_in,pitch_in,mass_g,format,file,cal_group,max_rpm,include
     data/propellers/*     coefficient tables (csv: J,Ct,Cp | apc: APC PER3 .dat or .json, one table per RPM |
-                          uiuc: static;tunnel)
+                          uiuc: static;tunnel) - APC tables are in data_2/propellers/APC_DAT_Files/
     data/escs.csv         name,cont_a,burst_a,mass_g,r_mohm
     data/batteries.csv    name,cells,mah,mass_g,r_mohm,c_cont[,c_burst]
     data/calibration.csv  bench points used to scale prop data to real thrust stands
@@ -19,9 +19,10 @@ motor x propeller x ESC x battery, ranks them and draws graphs of the best ones.
 Model (per operating point)
     T = Ct*rho*n^2*D^4      P = Cp*rho*n^3*D^5      Q = P/(2*pi*n)      J = V/(n*D)
     I_motor = Q/Kt + I0     I_batt = throttle*I_motor      Kt = 60/(2*pi*Kv)
-    V_batt = Voc - I_batt*(R_pack + R_esc + R_wiring)
-    RPM = Kv*(throttle*V_batt - I_motor*Rm)
-  An ESC current limit is modelled by reducing throttle until I_batt = limit.
+    V_batt = Voc - I_batt*(R_pack + R_wiring)
+    RPM = Kv*(throttle*V_batt - I_motor*(Rm + R_esc))
+  An ESC current limit is modelled by reducing throttle until I_motor <= min(motor, ESC rating) and
+  I_batt <= min(battery rating, max_system_current_a).
 
 With a plane file the ranking is the estimated flight score: the heaviest
 takeoff mass that still (a) lifts off within the takeoff limit, (b) climbs,
@@ -39,7 +40,7 @@ Usage
     python propcalc.py --no-plane --thrust-cal flat   # thrust factor above the bench data: hold (default), linear, flat
     python propcalc.py --data mydata --out results --top 10
     python propcalc.py --import-apc data_2/propellers   # add every APC PER3 .dat/.json in the folder to props.csv
-    python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Example 80A ESC (EDIT)" "CNHL MiniStar 1000 100C"
+    python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Skystars Jupiter Single 80A ESC" "CNHL MiniStar 1000 100C"
 
 Outputs (in --out folder): results.csv (every combination), ranking.png,
 thrust_curves.png, and with a plane also payload_vs_current.png and
@@ -67,16 +68,18 @@ try:  # the calculation itself is plain Python (also runs in the browser); numpy
 except ImportError:
     np = None
 
-G = 9.81
+G = 9.80665          # standard gravity: 1 gf = 9.80665 mN by definition
 IN = 0.0254
 LB = 0.45359237
+LBF = 4.4482216152605  # N per lbf
 
 DEFAULT_CONFIG = {
     "rules": {"battery_cells": 3, "max_battery_mah": 1000, "max_prop_diameter_in": 12},
     "model": {"air_density_kg_m3": 1.225, "voc_per_cell_fresh": 4.0, "voc_per_cell_cruise": 3.8,
               "wiring_and_plug_mohm": 5, "usable_capacity_fraction": 0.8,
               "speeds_mps": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
-              "current_limit_mode": "cap", "battery_rating": "continuous", "thrust_cal_extrapolation": "hold"},
+              "current_limit_mode": "cap", "battery_rating": "continuous", "thrust_cal_extrapolation": "hold",
+              "multi_blade_props": "include"},
     "ranking_without_plane": {"metric": "net_thrust", "avg_up_to_mps": 12},
 }
 
@@ -208,6 +211,12 @@ def _apc_label(path):
     return label if re.match(r"^\d+(\.\d+)?x\d", label) else os.path.splitext(os.path.basename(path))[0][5:]
 
 
+def blades_from_name(name):
+    """Blade count from the prop name: APC writes 3/4 blades as a suffix ('12x7E-3', '10x6-4'), UIUC as 'n-blade'."""
+    m = re.search(r"\d+(?:\.\d+)?x\d+(?:\.\d+)?[A-Za-z]*-(\d)(?![\d.])", name) or re.search(r"(\d)-blade", name, re.I)
+    return int(m.group(1)) if m else 2
+
+
 class Prop:
     """Propeller with one or more Ct/Cp(J) tables, optionally at several RPMs."""
 
@@ -219,6 +228,7 @@ class Prop:
         self.mass = _f(row, "mass_g", 0)
         self.group = row.get("cal_group", "") or "default"
         self.max_rpm = _f(row, "max_rpm", 1e9)
+        self.blades = int(_f(row, "blades", blades_from_name(self.name)))  # optional 'blades' column overrides the name
         self.include = (row.get("include", "yes") or "yes").lower() not in ("no", "false", "0")
         fmt = (row.get("format", "csv") or "csv").lower()
         files = [os.path.join(base, p.strip()) for p in row["file"].split(";")]
@@ -354,7 +364,8 @@ def load_library(base):
         try:
             return Prop(r, base)
         except FileNotFoundError as e:
-            print(f"  skipping prop '{r.get('name')}': {e}")
+            if (r.get("include", "yes") or "yes").lower() not in ("no", "false", "0"):  # switched-off props stay quiet
+                print(f"  skipping prop '{r.get('name')}': {e}")
 
     cfg = load_config(base)
     lib = dict(
@@ -371,8 +382,16 @@ def load_library(base):
 # =============================================================================
 # Calibration
 # =============================================================================
+def tip_speed(rpm, D):
+    """Blade tip speed (m/s) of a prop of diameter D (m) at rpm."""
+    return math.pi * D * rpm / 60
+
+
 class Calibration:
-    """Per data-source group: torque factor and RPM-dependent thrust factor."""
+    """Per data-source group: torque factor and a thrust factor that depends on the blade tip speed.
+
+    The thrust factor is keyed to tip speed (pi * D * n), not RPM, so bench points measured on a 12 in prop
+    carry over to 10-11 in props at the same blade loading / tip Mach number instead of at the same RPM."""
 
     MODES = ("hold", "linear", "flat")  # thrust factor above the last bench point: last factor / last slope / mean
 
@@ -384,6 +403,7 @@ class Calibration:
         self.bench = {}  # group -> True if it has thrust bench points
         motors = {m.name: m for m in lib["motors"]}
         props = {p.name: p for p in lib["props"]}
+        used = {p.group for p in lib["props"] if p.include}
         by_group = {}
         for r in lib["calibration"]:
             by_group.setdefault(r["group"], []).append(r)
@@ -392,7 +412,8 @@ class Calibration:
             for r in rows:
                 m, p = motors.get(r["motor"]), props.get(r["prop"])
                 if m is None or p is None:
-                    print(f"  calibration: skipping row ({r['motor']}, {r['prop']}) - not in library")
+                    if g in used:  # rows of groups no prop uses (e.g. 'uiuc' without UIUC props) are ignored quietly
+                        print(f"  calibration: skipping row ({r['motor']}, {r['prop']}) - not in library")
                     continue
                 rpm = float(r["rpm"]); n = rpm / 60
                 ct, cp = p.coef(0.0, rpm)
@@ -402,35 +423,39 @@ class Calibration:
                     kq.append(m.kt * (float(r["current_a"]) - m.i0) / q_data)
                 if use in ("both", "thrust"):
                     t_data = ct * rho * n * n * p.D ** 4
-                    kt_pts.append((rpm, float(r["thrust_gf"]) * G / 1000 / t_data))
-            by_rpm = {}  # bench points at the same RPM are averaged (two equal RPMs would divide by zero in thrust())
-            for rpm, k in kt_pts:
-                by_rpm.setdefault(rpm, []).append(k)
-            self.groups[g] = (_mean(kq) if kq else 1.0, sorted((r, _mean(k)) for r, k in by_rpm.items()) or [(0, 1.0)])
-            self.bench[g] = bool(by_rpm)
+                    kt_pts.append((tip_speed(rpm, p.D), float(r["thrust_gf"]) * G / 1000 / t_data))
+            if not kq and not kt_pts:
+                continue
+            by_tip = {}  # bench points at the same tip speed are averaged (equal x would divide by zero in thrust())
+            for u, k in kt_pts:
+                by_tip.setdefault(round(u, 6), []).append(k)
+            self.groups[g] = (_mean(kq) if kq else 1.0, sorted((u, _mean(k)) for u, k in by_tip.items()) or [(0, 1.0)])
+            self.bench[g] = bool(by_tip)
 
     def torque(self, group):
         return self.groups.get(group, (1.0, None))[0]
 
     def bench_range(self, group):
-        """(min rpm, max rpm) of the group's thrust bench points, or None if it has none."""
+        """(min, max) tip speed in m/s of the group's thrust bench points, or None if it has none."""
         if not self.bench.get(group):
             return None
         pts = self.groups[group][1]
         return pts[0][0], pts[-1][0]
 
-    def thrust(self, group, rpm):
+    def thrust(self, group, rpm, D):
+        """Thrust factor for a prop of diameter D (m) turning at rpm."""
         pts = self.groups.get(group, (None, [(0, 1.0)]))[1]
-        if self.mode == "flat":  # one factor per group at every RPM
+        if self.mode == "flat":  # one factor per group at every tip speed
             return _mean(k for _, k in pts)
-        if len(pts) == 1 or rpm <= pts[0][0]:
+        u = tip_speed(rpm, D)
+        if len(pts) == 1 or u <= pts[0][0]:
             return pts[0][1]
-        if rpm >= pts[-1][0]:
+        if u >= pts[-1][0]:
             if self.mode == "hold":
                 return pts[-1][1]
-            (r0, k0), (r1, k1) = pts[-2], pts[-1]  # linear: extend the slope of the last two points
-            return max(k1 + (rpm - r1) * (k1 - k0) / (r1 - r0), 0.5)
-        return _interp(rpm, [a for a, _ in pts], [b for _, b in pts])
+            (u0, k0), (u1, k1) = pts[-2], pts[-1]  # linear: extend the slope of the last two points
+            return max(k1 + (u - u1) * (k1 - k0) / (u1 - u0), 0.5)
+        return _interp(u, [a for a, _ in pts], [b for _, b in pts])
 
     def describe(self, props=()):
         for g in sorted({p.group for p in props if p.include} - set(self.groups)):
@@ -441,29 +466,45 @@ class Calibration:
                 print(f"  calibration group '{g}': torque x{kq:.3f}, no thrust bench points - thrust x1.000")
                 continue
             print(f"  calibration group '{g}': torque x{kq:.3f}, thrust extrapolation '{self.mode}'"
-                  + (f" (x{self.thrust(g, 0):.3f} at every rpm)" if self.mode == "flat" else ""))
-            print(f"      thrust bench points (rpm, factor): {[(int(r), round(k, 3)) for r, k in pts]}, "
-                  f"bench range {rng[0]:,.0f}-{rng[1]:,.0f} rpm")
+                  + (f" (x{self.thrust(g, 0, 1):.3f} at every tip speed)" if self.mode == "flat" else ""))
+            print(f"      thrust bench points (tip speed m/s, factor): {[(round(u), round(k, 3)) for u, k in pts]}, "
+                  f"bench range {rng[0]:.0f}-{rng[1]:.0f} m/s tip speed")
 
 
 # =============================================================================
 # Operating-point solver
 # =============================================================================
 class System:
+    """Battery -> wiring -> ESC -> motor -> prop.
+
+    Resistances: pack + wiring carry the battery current; the ESC's FETs carry the motor current (with synchronous
+    rectification the motor current flows through two FETs during the whole PWM period), so R_esc is in series
+    with the winding. Current limits ('cap' mode): the motor and ESC ratings limit the motor (winding/phase)
+    current, the pack rating and max_system_current_a limit the battery current. At part throttle
+    I_motor = I_batt / throttle, so a battery-side limit alone would let the motor run far above its rating."""
+
     def __init__(self, motor, prop, esc, battery, cal, cfg):
         self.m, self.p, self.e, self.b = motor, prop, esc, battery
         mdl = cfg["model"]
         self.rho = mdl["air_density_kg_m3"]
-        self.r_line = battery.r + esc.r + mdl["wiring_and_plug_mohm"] / 1000
+        self.r_line = battery.r + mdl["wiring_and_plug_mohm"] / 1000  # battery side: pack + leads/plugs
+        self.r_motor = motor.rm + esc.r                                # motor side: winding + ESC FETs
         self.kq = cal.torque(prop.group)
         self.cal = cal
         self.voc_fresh = battery.cells * mdl["voc_per_cell_fresh"]
         self.voc_cruise = battery.cells * mdl["voc_per_cell_cruise"]
         mode = mdl.get("current_limit_mode", "cap")
-        lims = [esc.cont, motor.imax, battery.imax(mdl.get("battery_rating", "continuous"))]
+        lim_m = [(motor.imax, "motor rating"), (esc.cont, "ESC rating")]
+        lim_b = [(battery.imax(mdl.get("battery_rating", "continuous")), "battery rating")]
         if mdl.get("max_system_current_a"):
-            lims.append(float(mdl["max_system_current_a"]))  # e.g. what you trust the pack/wiring to deliver
-        self.limit = min(lims) if mode in ("cap", "reject") else None
+            lim_b.append((float(mdl["max_system_current_a"]), "max system current"))  # e.g. your ESC current limit
+        on = mode in ("cap", "reject")
+        (self.limit_motor, src_m), (self.limit_batt, src_b) = min(lim_m), min(lim_b)
+        if not on:
+            self.limit_motor = self.limit_batt = None
+        # lowest rating: at full throttle without a limit I_motor = I_batt, so this is what a combo may draw
+        self.limit = min(self.limit_motor, self.limit_batt) if on else None
+        self.limit_src = (src_m if self.limit_motor <= self.limit_batt else src_b) if on else ""
         self.mode = mode
         self.mass = motor.mass + prop.mass + esc.mass + battery.mass
 
@@ -471,7 +512,7 @@ class System:
         n = rpm / 60.0
         J = v / (n * self.p.D) if v > 0 else 0.0
         ct, cp = self.p.coef(J, rpm)
-        return n, J, ct * self.cal.thrust(self.p.group, rpm), cp * self.kq
+        return n, J, ct * self.cal.thrust(self.p.group, rpm, self.p.D), cp * self.kq
 
     def _imotor(self, rpm, v):
         n, J, ct, cp = self._coeffs(rpm, v)
@@ -490,31 +531,56 @@ class System:
                 break
         return 0.5 * (lo + hi)
 
+    def _at_battery_current(self, v, voc, Ib, rpm_hi):
+        """Operating point with the battery current held at Ib: solve rpm, then throttle = Ib / I_motor."""
+        m, R, Rm = self.m, self.r_line, self.r_motor
+
+        def g(r):  # motor voltage throttle * V_batt = (Ib / Im) * (voc - Ib * R)
+            Imr = self._imotor(r, v)
+            return Ib * (voc - Ib * R) / Imr - Imr * Rm - r / m.kv
+
+        rpm = self._bisect(g, 50.0, rpm_hi)
+        return rpm, Ib / self._imotor(rpm, v)
+
+    def _at_motor_current(self, v, voc, Im, rpm_hi):
+        """Operating point with the motor current held at Im: the prop load sets rpm, the voltage balance
+        throttle * (voc - throttle * Im * R) = Im * Rm + rpm / Kv sets the throttle (smaller root)."""
+        R = self.r_line
+        rpm = self._bisect(lambda r: Im - self._imotor(r, v), 50.0, rpm_hi)
+        need = Im * self.r_motor + rpm / self.m.kv
+        a = Im * R
+        th = need / voc if a <= 0 else (voc - math.sqrt(max(voc * voc - 4 * a * need, 0.0))) / (2 * a)
+        return rpm, th
+
     def point(self, v=0.0, throttle=1.0, voc=None, cap="auto"):
-        """Solve one point. cap='auto' uses the system limit in 'cap' mode, None = no limit."""
+        """Solve one point. cap='auto' applies the current limits in 'cap' mode, None = no limit."""
         voc = self.voc_fresh if voc is None else voc
-        if cap == "auto":
-            cap = self.limit if self.mode == "cap" else None
+        on = cap == "auto" and self.mode == "cap"
         m, R = self.m, self.r_line
 
         def f(rpm):  # fixed throttle
             Im = self._imotor(rpm, v)
-            return throttle * (voc - throttle * Im * R) - Im * m.rm - rpm / m.kv
+            return throttle * (voc - throttle * Im * R) - Im * self.r_motor - rpm / m.kv
 
         rpm = self._bisect(f, 50.0, voc * m.kv * throttle)
-        Im = self._imotor(rpm, v); Ib = throttle * Im; th = throttle
-        limited = False
-        if cap is not None and Ib > cap:  # current-limited: I_batt = cap, solve rpm then throttle
-            def g(r):
-                Imr = self._imotor(r, v)
-                return cap * (voc - cap * R) / Imr - Imr * m.rm - r / m.kv
-            rpm = self._bisect(g, 50.0, rpm)
-            Im = self._imotor(rpm, v); th = cap / Im; Ib = cap; limited = True
+        Im = self._imotor(rpm, v); th = throttle
+        limited = ""
+        if on:  # current-limited: the ESC lowers the throttle until both currents are within their limits
+            cands = []
+            if Im > self.limit_motor:
+                cands.append(self._at_motor_current(v, voc, self.limit_motor, rpm) + ("motor",))
+            if throttle * Im > self.limit_batt:
+                cands.append(self._at_battery_current(v, voc, self.limit_batt, rpm) + ("battery",))
+            if cands:  # both currents grow with throttle, so the lower throttle satisfies both limits
+                rpm, th, limited = min(cands, key=lambda c: c[1])
+                Im = self._imotor(rpm, v)
+        Ib = th * Im
         n, J, ct, cp = self._coeffs(rpm, v)
         T = ct * self.rho * n * n * self.p.D ** 4
         Vb = voc - Ib * R
         return dict(v=v, rpm=rpm, J=J, T=T, gf=T / G * 1000, I_batt=Ib, I_motor=Im, V_batt=Vb,
-                    P_in=Vb * Ib, P_shaft=cp * self.rho * n ** 3 * self.p.D ** 5, throttle=th, limited=limited)
+                    P_in=Vb * Ib, P_shaft=cp * self.rho * n ** 3 * self.p.D ** 5, throttle=th,
+                    limited=bool(limited), limited_by=limited)
 
     def curve(self, speeds, voc=None, cap="auto"):
         return [self.point(v, 1.0, voc, cap) for v in speeds]
@@ -621,6 +687,11 @@ class Evaluator:
 # =============================================================================
 # Optimisation run
 # =============================================================================
+def _rejected(s, crv):
+    """'reject' mode: the (unlimited) curve draws more than the lowest rating - same test as in evaluate_all."""
+    return s.mode == "reject" and max(pt["I_batt"] for pt in crv) > s.limit
+
+
 def prescreen_props(props, lib, cal, cfg, bats, n_keep, avg_to, verbose=True):
     """Quick pass: each prop with each motor on the strongest ESC and lowest-resistance pack.
     Keeps the n_keep props with the best mean thrust (relative to the best prop for that motor)."""
@@ -633,11 +704,11 @@ def prescreen_props(props, lib, cal, cfg, bats, n_keep, avg_to, verbose=True):
         for p in props:
             s = System(m, p, esc, bat, cal, cfg)
             crv = s.curve(vs)
-            if max(pt["rpm"] for pt in crv) > p.max_rpm:
+            if max(pt["rpm"] for pt in crv) > p.max_rpm or _rejected(s, crv):
                 continue
             vals[p.name] = _mean(pt["gf"] for pt in crv) - p.mass
-        if vals:
-            top = max(vals.values())
+        top = max(vals.values(), default=0)
+        if top > 0:  # relative to the best prop on this motor (a ratio is meaningless if nothing pulls its weight)
             for k, v in vals.items():
                 score[k] = max(score.get(k, -1e9), v / top)
     keep = sorted(score, key=score.get, reverse=True)[:n_keep]
@@ -659,7 +730,7 @@ def prescreen_motors(motors, props, lib, cal, cfg, bats, n_keep, avg_to, verbose
         for p in props[:5]:
             s = System(m, p, esc, bat, cal, cfg)
             crv = s.curve(vs)
-            if max(pt["rpm"] for pt in crv) > p.max_rpm:
+            if max(pt["rpm"] for pt in crv) > p.max_rpm or _rejected(s, crv):
                 continue
             best = max(best, _mean(pt["gf"] for pt in crv) - m.mass - p.mass)
         score[m.name] = best
@@ -668,6 +739,14 @@ def prescreen_motors(motors, props, lib, cal, cfg, bats, n_keep, avg_to, verbose
         n_est = sum(1 for m in motors if m.name in keep and m.estimated)
         print(f"  prescreen: {len(motors)} motors -> best {len(keep)} kept ({n_est} with estimated Rm/I0)")
     return [m for m in motors if m.name in keep]
+
+
+def two_blade_only(cfg):
+    """True if config model.multi_blade_props is 'exclude' (3/4-blade props are left out of the search)."""
+    mode = str(cfg["model"].get("multi_blade_props", "include")).strip().lower()
+    if mode not in ("include", "exclude"):
+        raise ValueError(f"multi_blade_props must be 'include' or 'exclude' (got '{mode}')")
+    return mode == "exclude"
 
 
 def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
@@ -682,6 +761,11 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
               [p.name for p in lib["props"] if p.include and p not in props]
     if skipped and verbose:
         print("  excluded by rules:", ", ".join(skipped))
+    if two_blade_only(cfg):  # calibration comes from 2-blade bench tests - leave 3/4-blade props out
+        multi = [p.name for p in props if p.blades > 2]
+        props = [p for p in props if p.blades <= 2]
+        if multi and verbose:
+            print("  2-blade only (multi_blade_props = exclude): left out", ", ".join(multi))
     motors = [m for m in lib["motors"] if m.include]
     n_keep = mdl.get("prescreen_props", 40) if prescreen is None else prescreen
     if n_keep and len(props) > n_keep:
@@ -703,22 +787,22 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
         s = System(m, p, e, b, cal, cfg)
         free = s.curve(speeds, cap=None)  # unlimited draw
         crv = s.curve(speeds)              # with current limit (cap mode)
-        peak_free = max(pt["I_batt"] for pt in free)
+        peak_free = max(pt["I_batt"] for pt in free)  # full throttle, no limit: I_batt = I_motor
         notes = []
         if mdl.get("current_limit_mode") == "reject" and peak_free > s.limit:
             continue
         if max(pt["rpm"] for pt in crv) > p.max_rpm:
             continue  # prop over its RPM limit
         if s.limit is not None and peak_free > s.limit + 0.5:
-            notes.append(f"needs current limit {s.limit:.0f} A (would draw {peak_free:.0f} A)")
-        rng = cal.bench_range(p.group); rpm_pk = max(pt["rpm"] for pt in crv)
-        if rng and rpm_pk > rng[1]:
-            notes.append(f"thrust calibration beyond bench data ({rpm_pk:,.0f} rpm > {rng[1]:,.0f} rpm bench max)")
+            notes.append(f"needs current limit {s.limit:.0f} A ({s.limit_src}; would draw {peak_free:.0f} A)")
+        rng = cal.bench_range(p.group); u_pk = tip_speed(max(pt["rpm"] for pt in crv), p.D)
+        if rng and u_pk > rng[1] + 0.5:
+            notes.append(f"thrust calibration beyond bench data (tip speed {u_pk:.0f} m/s > {rng[1]:.0f} m/s bench max)")
         if m.estimated:
             notes.append("motor Rm/I0 estimated (+/-15 %) - check datasheet")
         im_pk = max(pt["I_motor"] for pt in crv)
         if im_pk > m.imax + 0.5:
-            notes.append(f"motor winding current up to {im_pk:.0f} A at part throttle (rated {m.imax:g} A, {m.rating})")
+            notes.append(f"motor current up to {im_pk:.0f} A (rated {m.imax:g} A, {m.rating})")
         vs = [float(v) for v in speeds]
         gf = [pt["gf"] for pt in crv]
         sel = [i for i, v in enumerate(vs) if v <= avg_to]
@@ -729,8 +813,9 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
             avg = gf[0]
         row = dict(motor=m.name, prop=p.name, esc=e.name, battery=b.name,
                    static_gf=crv[0]["gf"], avg_gf=avg, thrust_10ms=_interp(10, vs, gf),
-                   peak_A=max(pt["I_batt"] for pt in crv), uncapped_peak_A=peak_free,
-                   limit_A=s.limit, static_W=crv[0]["P_in"], gpw=crv[0]["gf"] / crv[0]["P_in"],
+                   peak_A=max(pt["I_batt"] for pt in crv), peak_motor_A=im_pk, uncapped_peak_A=peak_free,
+                   limit_A=s.limit, motor_limit_A=s.limit_motor, batt_limit_A=s.limit_batt,
+                   static_W=crv[0]["P_in"], gpw=crv[0]["gf"] / crv[0]["P_in"],
                    rpm_static=crv[0]["rpm"], prop_mass_g=s.mass,
                    full_throttle_min=mdl["usable_capacity_fraction"] * b.mah / 1000 / max(pt["I_batt"] for pt in crv) * 60,
                    net_gf=avg - s.mass, notes="; ".join(notes), _sys=s, _curve=crv)
@@ -758,7 +843,8 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
 
 def write_csv(results, path, plane):
     cols = ["rank", "motor", "prop", "esc", "battery", "static_gf", "thrust_10ms", "avg_gf", "net_gf", "peak_A",
-            "uncapped_peak_A", "limit_A", "static_W", "gpw", "rpm_static", "prop_mass_g", "full_throttle_min"]
+            "peak_motor_A", "uncapped_peak_A", "limit_A", "motor_limit_A", "batt_limit_A", "static_W", "gpw",
+            "rpm_static", "prop_mass_g", "full_throttle_min"]
     if plane:
         cols += ["tow_kg", "payload_kg", "score", "mission_mah", "roll_m"]
     cols += ["notes"]
@@ -768,7 +854,7 @@ def write_csv(results, path, plane):
             out = []
             for c in cols:
                 v = i if c == "rank" else r.get(c, "")
-                out.append(f"{v:.3f}" if isinstance(v, float) else v)
+                out.append(f"{v:.3f}" if isinstance(v, float) else ("" if v is None else v))
             w.writerow(out)
 
 
@@ -833,9 +919,10 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         style = dict(color=accent, lw=2.8) if i == 0 else dict(color=grey, lw=1.5, alpha=1 - 0.15 * i)
         a1.plot(vs, [pt["gf"] for pt in c], marker="o", ms=3, label=f"#{i + 1} {label(r)}", **style)
         a2.plot(vs, [pt["I_batt"] for pt in c], marker="o", ms=3, **style)
-    if best_n[0]["limit_A"]:
-        a2.axhline(best_n[0]["limit_A"], color="k", ls=":", lw=1)
-        a2.text(0.2, best_n[0]["limit_A"] * 0.88, f"current limit of #1: {best_n[0]['limit_A']:.0f} A", fontsize=8)
+    if best_n[0]["batt_limit_A"]:
+        a2.axhline(best_n[0]["batt_limit_A"], color="k", ls=":", lw=1)
+        a2.text(0.2, best_n[0]["batt_limit_A"] * 0.88, f"battery current limit of #1: {best_n[0]['batt_limit_A']:.0f} A "
+                f"(motor current limit {best_n[0]['motor_limit_A']:.0f} A)", fontsize=8)
     a2.set_ylim(0, max(max(pt["I_batt"] for pt in r["_curve"]) for r in best_n) * 1.2)
     a1.set_ylim(0, max(max(pt["gf"] for pt in r["_curve"]) for r in best_n) * 1.1)
     a1.set_ylabel("Thrust available (gf)"); a2.set_ylabel("Battery current (A)"); a2.set_xlabel("Airspeed (m/s)")
@@ -874,13 +961,13 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         r = results[0]; ev = r["_eval"]; pl = plane; m = r["tow_kg"]
         v = np.linspace(max(pl.vstall(m, ev.rho) * 0.9, 1), 25, 80)
         fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(v / 0.3048, [ev._T(x) / 4.448 for x in v], color=accent, lw=2.8, label="Thrust available (full throttle)")
+        ax.plot(v / 0.3048, [ev._T(x) / LBF for x in v], color=accent, lw=2.8, label="Thrust available (full throttle)")
         for k, sh in zip(range(1, 4), (0.45, 0.7, 1.0)):
-            ax.plot(v / 0.3048, [pl.drag(m, x, ev.rho, n_art=k) / 4.448 for x in v], color="k", alpha=sh, lw=1.4,
+            ax.plot(v / 0.3048, [pl.drag(m, x, ev.rho, n_art=k) / LBF for x in v], color="k", alpha=sh, lw=1.4,
                     label=f"Drag, {k} drag article{'s' if k > 1 else ''}")
         vc = pl.mis["cruise_speed_mps"]
-        ax.plot([vc / 0.3048], [pl.drag(m, vc, ev.rho) / 4.448], "o", color="k")
-        ax.annotate("cruise design point", (vc / 0.3048, pl.drag(m, vc, ev.rho) / 4.448), xytext=(8, -14),
+        ax.plot([vc / 0.3048], [pl.drag(m, vc, ev.rho) / LBF], "o", color="k")
+        ax.annotate("cruise design point", (vc / 0.3048, pl.drag(m, vc, ev.rho) / LBF), xytext=(8, -14),
                     textcoords="offset points", fontsize=8)
         ax.set_xlabel("Flight speed (ft/s)"); ax.set_ylabel("Force (lbf)")
         ax.set_title(f"Thrust available vs drag (TDS power available / required) at {m:.2f} kg - #1 combination", loc="left", fontsize=12,
@@ -919,7 +1006,7 @@ def _load_rcbench(path):
     if idx["Q"] is None or idx["T"] is None:
         raise ValueError("no Torque/Thrust columns")
     t_unit = hdr[idx["T"]].lower()
-    t_scale = G if "kgf" in t_unit else (G / 1000 if "gf" in t_unit else (4.448 if "lbf" in t_unit else 1.0))
+    t_scale = G if "kgf" in t_unit else (G / 1000 if "gf" in t_unit else (LBF if "lbf" in t_unit else 1.0))
     out = []
     for r in rows[1:]:
         try:
@@ -1061,7 +1148,7 @@ def import_tunnel(folder, data_dir, rho, min_rpm, mass_g, out_dir, cfg, plots=Tr
                  and abs(p.pitch - rec["P_in"]) <= 0.6]
         cmp_txt = ""
         if twins:
-            p = twins[0]; kq = cal.torque(p.group); ktr = cal.thrust(p.group, 9000)
+            p = twins[0]; kq = cal.torque(p.group); ktr = cal.thrust(p.group, 9000, p.D)
             r = []
             for j in (0.0, 0.2, 0.4):
                 a, b = p.coef(j, 9000)
@@ -1088,10 +1175,10 @@ def import_tunnel(folder, data_dir, rho, min_rpm, mass_g, out_dir, cfg, plots=Tr
             for p, ls in zip(twins[:2], ("--", ":")):
                 kq = cal.torque(p.group); jm = max(p.tables[0][1]); js = np.linspace(0, jm, 60)
                 cc = [p.coef(j, 9000) for j in js]
-                axs[0].plot(js, [a * cal.thrust(p.group, 9000) for a, b in cc], ls, color="#ef4444", lw=1.6,
+                axs[0].plot(js, [a * cal.thrust(p.group, 9000, p.D) for a, b in cc], ls, color="#ef4444", lw=1.6,
                             label=f"{p.name} (library, calibrated)")
                 axs[1].plot(js, [b * kq for a, b in cc], ls, color="#ef4444", lw=1.6)
-                axs[2].plot(js[1:], [j * a * cal.thrust(p.group, 9000) / (b * kq) for j, (a, b) in zip(js[1:], cc[1:])],
+                axs[2].plot(js[1:], [j * a * cal.thrust(p.group, 9000, p.D) / (b * kq) for j, (a, b) in zip(js[1:], cc[1:])],
                             ls, color="#ef4444", lw=1.6, label=p.name)
             for ax, t in zip(axs, ("Thrust coefficient Ct", "Power coefficient Cp", "Propeller efficiency  J*Ct/Cp")):
                 ax.set_xlabel("Advance ratio J = V / (n D)"); ax.set_title(t, loc="left", fontweight="bold")
@@ -1116,7 +1203,7 @@ def import_tunnel(folder, data_dir, rho, min_rpm, mass_g, out_dir, cfg, plots=Tr
 UIUC_MM_SERIES = {"ef", "kpf", "pl", "vp"}
 UIUC_SERIES = {  # file prefix -> (display name, RPM-limit constant / D_in, purchasable)
     "ance": ("Aeronaut CAM Carbon Electric", 150000, True), "ancf": ("Aeronaut CAM Carbon Folding", 150000, True),
-    "apce": ("APC Thin Electric", 145000, True), "apcsp": ("APC Sport", 190000, True),
+    "apce": ("APC Thin Electric", 150000, True), "apcsp": ("APC Sport", 190000, True),
     "apcsf": ("APC Slow Flyer", 65000, True), "apccf": ("APC Carbon Fiber", 190000, True),
     "apcff": ("APC Free Flight", 65000, True), "apc29ff": ("APC 29 Free Flight", 65000, True),
     "grcp": ("Graupner CAM Prop", 150000, True), "grcsp": ("Graupner CAM Slim", 150000, True),
@@ -1265,7 +1352,10 @@ def import_uiuc(db_folder, data_dir, cfg, ref_name="APC Thin Electric 12x6 (UIUC
     return rows
 
 
-APC_RPM_LIMIT = (("SF", 65000), ("MR", 105000))  # APC max RPM = constant / D_in; anything else 145000 (E series)
+# APC max RPM = constant / D_in (apcprop.com/technical-information/rpm-limits): slow flyer 65,000, multi-rotor 105,000,
+# folding electric 120,000, thin electric 150,000. Anything else (sport/glow, rated 190,000+) gets the 150,000 of the E series.
+APC_RPM_LIMIT = (("SF", 65000), ("MR", 105000), ("F", 120000))
+APC_RPM_DEFAULT = 150000
 
 
 def import_apc(folder, data_dir, cfg):
@@ -1300,7 +1390,7 @@ def import_apc(folder, data_dir, cfg):
         except (ValueError, OSError):
             bad.append(os.path.basename(path)); continue
         suffix = label[m.end():]
-        k = next((c for s, c in APC_RPM_LIMIT if suffix.upper().startswith(s)), 145000)
+        k = next((c for s, c in APC_RPM_LIMIT if suffix.upper().startswith(s)), APC_RPM_DEFAULT)
         rows.append(dict(name=name, diameter_in=f"{D:g}", pitch_in=f"{P:g}", mass_g=f"{30 * (D / 12) ** 3:.0f}",
                          format="apc", file=os.path.relpath(path, data_dir).replace(os.sep, "/"), cal_group="apc_per3",
                          max_rpm=f"{k / D:.0f}", include="yes",
@@ -1419,11 +1509,18 @@ def single(lib, names, voc=None):
         if p is None:
             sys.exit(f"{kind} '{n}' not found in library")
     s = System(*parts, cal, cfg)
-    print(f"\n{names[0]} + {names[1]} + {names[2]} + {names[3]}   (limit {s.limit} A, line R {s.r_line * 1000:.1f} mOhm)")
+    if parts[1].blades > 2 and two_blade_only(cfg):
+        print(f"  note: {parts[1].name} is a {parts[1].blades}-blade prop - left out of the search in 2-blade-only mode, "
+              f"its calibration (from 2-blade bench tests) is unverified")
+    lim = (f"limits: motor {s.limit_motor:g} A, battery {s.limit_batt:g} A" if s.mode == "cap"
+           else f"limit {s.limit:g} A (reject)" if s.limit else "no current limit")
+    print(f"\n{names[0]} + {names[1]} + {names[2]} + {names[3]}\n  ({lim}; R pack+wiring {s.r_line * 1000:.1f} mOhm, "
+          f"R motor+ESC {s.r_motor * 1000:.1f} mOhm)")
     print(f"{'V m/s':>6} {'RPM':>6} {'thrust gf':>9} {'I_batt':>7} {'I_motor':>7} {'V_batt':>6} {'P_in W':>6} {'thr':>5}")
     for pt in s.curve(cfg["model"]["speeds_mps"], voc):
         print(f"{pt['v']:6.1f} {pt['rpm']:6.0f} {pt['gf']:9.0f} {pt['I_batt']:7.1f} {pt['I_motor']:7.1f} "
-              f"{pt['V_batt']:6.2f} {pt['P_in']:6.0f} {pt['throttle']:5.2f}")
+              f"{pt['V_batt']:6.2f} {pt['P_in']:6.0f} {pt['throttle']:5.2f}"
+              + (f"  {pt['limited_by']}-limited" if pt["limited"] else ""))
 
 
 # =============================================================================
@@ -1461,6 +1558,9 @@ def main():
     ap.add_argument("--thrust-cal", choices=Calibration.MODES,
                     help="thrust calibration factor above the last bench point: hold (last factor), linear "
                          "(extend last slope), flat (group mean at every rpm); overrides thrust_cal_extrapolation")
+    ap.add_argument("--two-blade-only", action="store_true",
+                    help="leave 3/4-blade props out of the search (their calibration from 2-blade bench tests is "
+                         "unverified); same as model.multi_blade_props = exclude in config.json")
     ap.add_argument("--prescreen", type=int, default=None,
                     help="keep only the N best props (by thrust with each motor) before the full search; 0 = off")
     a = ap.parse_args()
@@ -1491,6 +1591,8 @@ def main():
         lib["cfg"]["model"]["max_system_current_a"] = a.max_current
     if a.thrust_cal:
         lib["cfg"]["model"]["thrust_cal_extrapolation"] = a.thrust_cal
+    if a.two_blade_only:
+        lib["cfg"]["model"]["multi_blade_props"] = "exclude"
     if a.single:
         single(lib, a.single); return
 

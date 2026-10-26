@@ -104,6 +104,8 @@ def _apply(lib, o):
     mdl = lib["cfg"]["model"]
     if o.get("limit_mode"):
         mdl["current_limit_mode"] = o["limit_mode"]
+    if o.get("two_blade_only") is not None:  # the page's "2-blade props only" box
+        mdl["multi_blade_props"] = "exclude" if o["two_blade_only"] else "include"
     mdl["max_system_current_a"] = float(o["max_current"]) if o.get("max_current") else None
     for k in ("prescreen_props", "prescreen_motors", "plane_evaluate_top"):
         if o.get(k) is not None and o.get(k) != "":
@@ -137,7 +139,8 @@ def save_settings(opts_json):
 
 
 ROW_KEYS = ["motor", "prop", "esc", "battery", "static_gf", "thrust_10ms", "avg_gf", "net_gf", "peak_A",
-            "uncapped_peak_A", "limit_A", "static_W", "gpw", "rpm_static", "prop_mass_g", "full_throttle_min",
+            "peak_motor_A", "uncapped_peak_A", "limit_A", "motor_limit_A", "batt_limit_A", "static_W", "gpw",
+            "rpm_static", "prop_mass_g", "full_throttle_min",
             "tow_kg", "payload_kg", "score", "mission_mah", "roll_m", "notes"]
 
 
@@ -179,17 +182,17 @@ def run(opts_json):
             round(x, 3), round(y, 4)] for r, (x, y) in zip(results, xy)]
 
     curves = [dict(v=[p["v"] for p in r["_curve"]], gf=[p["gf"] for p in r["_curve"]],
-                   I=[p["I_batt"] for p in r["_curve"]], limit=_num(r["limit_A"])) for r in results[:5]]
+                   I=[p["I_batt"] for p in r["_curve"]], limit=_num(r["batt_limit_A"])) for r in results[:5]]
 
     tds = None
     if plane:
         r = results[0]; ev = r["_eval"]; m = r["tow_kg"]
         vmin = max(plane.vstall(m, ev.rho) * 0.9, 1)
         vs = pc._linspace(vmin, 25, 60)
-        tds = dict(v_fts=[v / 0.3048 for v in vs], thrust_lbf=[ev._T(v) / 4.448 for v in vs],
-                   drag_lbf=[[plane.drag(m, v, ev.rho, n_art=k) / 4.448 for v in vs] for k in (1, 2, 3)],
+        tds = dict(v_fts=[v / 0.3048 for v in vs], thrust_lbf=[ev._T(v) / pc.LBF for v in vs],
+                   drag_lbf=[[plane.drag(m, v, ev.rho, n_art=k) / pc.LBF for v in vs] for k in (1, 2, 3)],
                    cruise=[plane.mis["cruise_speed_mps"] / 0.3048,
-                           plane.drag(m, plane.mis["cruise_speed_mps"], ev.rho) / 4.448],
+                           plane.drag(m, plane.mis["cruise_speed_mps"], ev.rho) / pc.LBF],
                    n_art=plane.n_art, tow_kg=m, vstall=plane.vstall(m, ev.rho) / 0.3048)
 
     buf = "/tmp/results.csv"
@@ -225,10 +228,16 @@ def single(opts_json):
         warn.append(f"prop over its RPM limit ({p.max_rpm:.0f})")
     pk = max(pt["I_batt"] for pt in free)
     if s.limit is not None and pk > s.limit + 0.5:
-        warn.append(f"needs current limit {s.limit:.0f} A (would draw {pk:.0f} A)")
+        warn.append(f"needs current limit {s.limit:.0f} A ({s.limit_src}; would draw {pk:.0f} A)")
     if m.estimated:
         warn.append("motor Rm/I0 estimated (+/-15 %) - check datasheet")
-    out = dict(limit=_num(s.limit), r_line_mohm=s.r_line * 1000, mass_g=s.mass, warnings=warn,
+    if p.blades > 2 and pc.two_blade_only(cfg):
+        warn.append(f"{p.blades}-blade prop - left out of the search in 2-blade-only mode (calibration unverified)")
+    im_pk = max(pt["I_motor"] for pt in crv)
+    if im_pk > m.imax + 0.5:
+        warn.append(f"motor current up to {im_pk:.0f} A (rated {m.imax:g} A, {m.rating})")
+    out = dict(limit=_num(s.limit), limit_motor=_num(s.limit_motor), limit_batt=_num(s.limit_batt),
+               r_line_mohm=s.r_line * 1000, r_motor_mohm=s.r_motor * 1000, mass_g=s.mass, warnings=warn,
                curve=[{k: _num(pt[k]) for k in ("v", "rpm", "gf", "I_batt", "I_motor", "V_batt", "P_in", "throttle", "limited")}
                       for pt in crv],
                uncapped=[pt["I_batt"] for pt in free])
@@ -305,7 +314,7 @@ def add_prop_file(filename, src_path, meta_json):
                diameter_in=f"{d:g}", pitch_in=f"{ptc:g}", mass_g=str(meta.get("mass_g") or 30),
                format="apc" if is_apc else "csv", file=rel,
                cal_group=meta.get("cal_group") or ("apc_per3" if is_apc else "uploaded"),
-               max_rpm=str(meta.get("max_rpm") or (round(145000 / d) if is_apc else 15000)), include="yes",
+               max_rpm=str(meta.get("max_rpm") or (round(pc.APC_RPM_DEFAULT / d) if is_apc else 15000)), include="yes",
                notes="uploaded on the website" + ({"apc_per3": "; scaled like APC data", "uiuc": "; scaled like UIUC data"}
                                                   .get(meta.get("cal_group") or ("apc_per3" if is_apc else ""), "; used as measured")))
     res = json.loads(upsert_row("props", json.dumps(row)))

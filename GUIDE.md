@@ -36,6 +36,7 @@ Both print a top-10 table and save everything to `results/`.
 | `--out NAME` | Save results to a different folder, so you don't overwrite earlier runs |
 | `--top 20` | Show and plot more combos |
 | `--no-plots` | Faster, table only |
+| `--two-blade-only` | Leave the 3-blade props (APC 11x7E-3, 12x7E-3) out. Their calibration comes from 2-blade bench tests and is unverified. Set `"multi_blade_props": "exclude"` in `config.json` to make it permanent |
 | `--limit-mode reject` | Only keep combos that never exceed any rating (no ESC current limit needed) |
 
 ---
@@ -53,9 +54,10 @@ Both print a top-10 table and save everything to `results/`.
 | payload / score | (plane mode only) predicted internal payload and flight score |
 
 Lines starting with `!` are warnings:
-- `needs current limit 80 A (would draw 95 A)` means it only works if the ESC current limit is set.
+- `needs current limit 79 A (motor rating; would draw 95 A)` means it only works if the ESC current limit is set. The model
+  keeps the motor current within the motor/ESC rating and the battery current within the pack rating.
 - `motor Rm/I0 estimated` means the motor came from the rcplanes list. Check its datasheet before buying.
-- `motor winding current up to … at part throttle` means the motor runs above its rating briefly. This is usually fine for a short flight.
+- `motor current up to … (rated …)` only appears with `--limit-mode ignore`: the motor would run above its rating.
 
 **Files in `results/`**
 
@@ -87,7 +89,7 @@ All files are plain CSV/JSON. Edit them in Excel, Numbers or a text editor.
 | `plane.json` | **you have a real airframe design**: wing area, CLmax, CD0, empty mass, drag articles, cruise speed. The current values are only an example, so payload numbers are rough until you replace them. |
 | `motors.csv` | adding a motor: Kv, Rm (mΩ), I0 (A @ volts), mass, max current. Put `no` in `include` to skip one. |
 | `props.csv` | turning props on/off (`include` = `no`), correcting a prop's mass |
-| `escs.csv` | **put in your real ESC**: the "Example 80A/100A/150A" rows are placeholders |
+| `escs.csv` | **put in your real ESC**: the "OddityRC Vortex 100A" and "Sequre 28120 120A" rows are placeholders |
 | `batteries.csv` | adding a pack. If you can, put the measured internal resistance (charger IR reading, whole pack, mΩ) in `r_mohm`. |
 | `config.json` | rules (cells, mAh, prop size), air density, a permanent current cap (`model.max_system_current_a`) |
 
@@ -105,17 +107,17 @@ All files are plain CSV/JSON. Edit them in Excel, Numbers or a text editor.
 python3 propcalc.py --import-tunnel "Wind tunnel measurements 2024"
 ```
 
-**UIUC propeller database** (already done, 202 legal props):
+**UIUC propeller database** (not in `data_2` at the moment; the props it adds get `cal_group = uiuc`):
 ```bash
 python3 propcalc.py --import-uiuc ../UIUC-propDB
 ```
 
-**Motor list from rcplanes.online** (already done: 174 motors added from `all_motor.txt`):
+**Motor list from rcplanes.online** (already done: 116 motors added from `all_motor.txt`):
 ```bash
 python3 propcalc.py --import-motors data_2/all_motor.txt
 python3 propcalc.py --import-motors data_2/all_motor.txt --kv-min 1000 --kv-max 1300 --max-mass 180   # different shortlist
 ```
-Re-importing replaces only the estimated motors. Your 8 datasheet motors are never touched. The full list (8,081) is in `data_2/motor_list_all.csv`.
+Re-importing replaces only the estimated motors. Your 8 datasheet motors are never touched. The import also writes the full list (8,081) to `data_2/motor_list_all.csv`.
 
 **Adding an APC prop by hand:** put its `PER3_xxx.dat` file from apcprop.com into `data_2/propellers/APC_DAT_Files/` and add a row to `props.csv` with `format = apc` and `cal_group = apc_per3`.
 
@@ -136,6 +138,7 @@ Re-importing replaces only the estimated motors. Your 8 datasheet motors are nev
 ```bash
 python3 propcalc.py --no-plane --metric net_thrust --max-current 80     # best propulsion
 python3 propcalc.py --max-current 80                                    # best for our plane
+python3 propcalc.py --max-current 80 --two-blade-only                   # same, 2-blade props only
 python3 propcalc.py --max-current 65 --out results_65A                  # compare at a lower cap
 python3 propcalc.py --single "MOTOR" "PROP" "ESC" "BATTERY"             # one setup in detail
 python3 propcalc.py --help                                              # all options

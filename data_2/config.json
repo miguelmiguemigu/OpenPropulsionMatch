@@ -14,8 +14,10 @@
     "speeds_mps": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
     "current_limit_mode": "cap",
     "thrust_cal_extrapolation": "hold",
-    "_thrust_cal_extrapolation_options": "thrust calibration factor above the highest-rpm bench point: hold = keep the last bench factor; linear = extend the slope of the last two bench points (floor 0.5); flat = mean of the group's bench factors at every rpm",
-    "_current_limit_mode_options": "cap = assume an ESC current limit at the lowest rating (motor, ESC, battery); reject = drop combos that exceed a rating; ignore = no limits"
+    "multi_blade_props": "include",
+    "_multi_blade_props_options": "include = search 3/4-blade props too; exclude = 2-blade props only (the calibration comes from 2-blade bench tests, so it is unverified for 3/4-blade props). Same as --two-blade-only",
+    "_thrust_cal_extrapolation_options": "thrust calibration factor (keyed to blade tip speed) above the fastest bench point: hold = keep the last bench factor; linear = extend the slope of the last two bench points (floor 0.5); flat = mean of the group's bench factors at every tip speed",
+    "_current_limit_mode_options": "cap = assume the ESC limits current: motor current <= motor and ESC rating, battery current <= battery rating and max_system_current_a; reject = drop combos that exceed a rating; ignore = no limits"
   },
   "ranking_without_plane": {
     "metric": "net_thrust",
