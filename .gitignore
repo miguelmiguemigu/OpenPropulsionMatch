@@ -18,3 +18,4 @@ results_*/
 # Old data copies - the active data folder is data_2/
 data/
 data_backup_*/
+data.old/
