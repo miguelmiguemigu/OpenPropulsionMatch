@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE explane>
+<explane version="1.0">
+    <Units>
+        <length_unit_to_meter>1</length_unit_to_meter>
+        <mass_unit_to_kg>1</mass_unit_to_kg>
+    </Units>
+    <Plane>
+        <Name>vutaz uzky</Name>
+        <Description></Description>
+        <Inertia/>
+        <has_body>false</has_body>
+        <wing>
+            <Name>Main Wing</Name>
+            <Type>MAINWING</Type>
+            <Color>
+                <red>151</red>
+                <green>195</green>
+                <blue>157</blue>
+                <alpha>255</alpha>
+            </Color>
+            <Description></Description>
+            <Position>          0,           0,           0</Position>
+            <Tilt_angle>  0.000</Tilt_angle>
+            <Symetric>true</Symetric>
+            <isFin>false</isFin>
+            <isDoubleFin>false</isDoubleFin>
+            <isSymFin>false</isSymFin>
+            <Inertia>
+                <Volume_Mass>  0.000</Volume_Mass>
+            </Inertia>
+            <Sections>
+                <Section>
+                    <y_position>  0.000</y_position>
+                    <Chord>  1.300</Chord>
+                    <xOffset>  0.000</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>13</x_number_of_panels>
+                    <x_panel_distribution>COSINE</x_panel_distribution>
+                    <y_number_of_panels>12</y_number_of_panels>
+                    <y_panel_distribution>INVERSE SINE</y_panel_distribution>
+                    <Left_Side_FoilName>NACA 23018</Left_Side_FoilName>
+                    <Right_Side_FoilName>NACA 23018</Right_Side_FoilName>
+                </Section>
+                <Section>
+                    <y_position>  0.110</y_position>
+                    <Chord>  1.300</Chord>
+                    <xOffset>  0.000</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>13</x_number_of_panels>
+                    <x_panel_distribution>COSINE</x_panel_distribution>
+                    <y_number_of_panels>12</y_number_of_panels>
+                    <y_panel_distribution>INVERSE SINE</y_panel_distribution>
+                    <Left_Side_FoilName>NACA 23018</Left_Side_FoilName>
+                    <Right_Side_FoilName>NACA 23018</Right_Side_FoilName>
+                </Section>
+                <Section>
+                    <y_position>  0.220</y_position>
+                    <Chord>  0.500</Chord>
+                    <xOffset>  0.250</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>13</x_number_of_panels>
+                    <x_panel_distribution>COSINE</x_panel_distribution>
+                    <y_number_of_panels>12</y_number_of_panels>
+                    <y_panel_distribution>INVERSE SINE</y_panel_distribution>
+                    <Left_Side_FoilName>MH 60  10.08%</Left_Side_FoilName>
+                    <Right_Side_FoilName>MH 60  10.08%</Right_Side_FoilName>
+                </Section>
+                <Section>
+                    <y_position>  0.750</y_position>
+                    <Chord>  0.400</Chord>
+                    <xOffset>  0.500</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>13</x_number_of_panels>
+                    <x_panel_distribution>COSINE</x_panel_distribution>
+                    <y_number_of_panels>8</y_number_of_panels>
+                    <y_panel_distribution>INVERSE SINE</y_panel_distribution>
+                    <Left_Side_FoilName>MH 60  10.08%</Left_Side_FoilName>
+                    <Right_Side_FoilName>MH 60  10.08%</Right_Side_FoilName>
+                </Section>
+            </Sections>
+        </wing>
+        <wing>
+            <Name>Fin</Name>
+            <Type>FIN</Type>
+            <Color>
+                <red>161</red>
+                <green>141</green>
+                <blue>151</blue>
+                <alpha>255</alpha>
+            </Color>
+            <Description></Description>
+            <Position>        0.5,        0.75,           0</Position>
+            <Tilt_angle>  0.000</Tilt_angle>
+            <Symetric>true</Symetric>
+            <isFin>true</isFin>
+            <isDoubleFin>true</isDoubleFin>
+            <isSymFin>false</isSymFin>
+            <Inertia>
+                <Volume_Mass>  0.000</Volume_Mass>
+            </Inertia>
+            <Sections>
+                <Section>
+                    <y_position> -0.120</y_position>
+                    <Chord>  0.350</Chord>
+                    <xOffset>  0.100</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>7</x_number_of_panels>
+                    <x_panel_distribution>UNIFORM</x_panel_distribution>
+                    <y_number_of_panels>4</y_number_of_panels>
+                    <y_panel_distribution>COSINE</y_panel_distribution>
+                    <Left_Side_FoilName>NACA 0008</Left_Side_FoilName>
+                    <Right_Side_FoilName>NACA 0008</Right_Side_FoilName>
+                </Section>
+                <Section>
+                    <y_position>  0.000</y_position>
+                    <Chord>  0.400</Chord>
+                    <xOffset>  0.000</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>7</x_number_of_panels>
+                    <x_panel_distribution>UNIFORM</x_panel_distribution>
+                    <y_number_of_panels>3</y_number_of_panels>
+                    <y_panel_distribution>COSINE</y_panel_distribution>
+                    <Left_Side_FoilName>NACA 0008</Left_Side_FoilName>
+                    <Right_Side_FoilName>NACA 0008</Right_Side_FoilName>
+                </Section>
+                <Section>
+                    <y_position>  0.120</y_position>
+                    <Chord>  0.350</Chord>
+                    <xOffset>  0.100</xOffset>
+                    <Dihedral>  0.000</Dihedral>
+                    <Twist>  0.000</Twist>
+                    <x_number_of_panels>13</x_number_of_panels>
+                    <x_panel_distribution>COSINE</x_panel_distribution>
+                    <y_number_of_panels>5</y_number_of_panels>
+                    <y_panel_distribution>UNIFORM</y_panel_distribution>
+                    <Left_Side_FoilName>NACA 0008</Left_Side_FoilName>
+                    <Right_Side_FoilName>NACA 0008</Right_Side_FoilName>
+                </Section>
+            </Sections>
+        </wing>
+    </Plane>
+</explane>

@@ -1,12 +1,13 @@
 {
   "_comment": "ILLUSTRATIVE airframe - replace every value with your design. Masses exclude payload and propulsion parts.",
   "name": "Illustrative Micro airframe",
-  "wing_area_m2": 0.45,
-  "span_m": 1.524,
-  "CLmax": 1.6,
-  "CL_ground_roll": 0.5,
-  "CD0": 0.045,
-  "oswald_e": 0.8,
+  "wing_area_m2": 0.961,
+  "span_m": 1.5,
+  "CLmax": 0.5,
+  "CL_ground_roll": 0.292,
+  "CD0": 0.00901,
+  "oswald_e": 1.204,
+  "extra_CdA_m2": 0.009,
   "rolling_friction": 0.04,
   "liftoff_speed_factor": 1.1,
   "takeoff_distance_limit_m": 15.24,
@@ -28,5 +29,39 @@
     "approach_current_a": 6,
     "min_cruise_speed_factor": 1.2
   },
-  "score_factor": 1.25
+  "score_factor": 1.25,
+  "_aero_source": {
+    "plane_xml": "xflr5/vutaz uzky.xml",
+    "polar": "xflr5/vutaz uzky_T1-10_0 m_s-VLM2.txt",
+    "plane_name": "vutaz uzky",
+    "polar_name": "T1-10.0 m/s-VLM2",
+    "program": "xflr5 v6.62",
+    "speed_mps": 10.0,
+    "aspect_ratio": 2.3413,
+    "fit": {
+      "cl_min": 0.15,
+      "points": 18,
+      "cl_range": [
+        0.164,
+        0.59
+      ],
+      "max_error_pct": 0.97
+    },
+    "alpha_ground_deg": 5.0,
+    "imported": "2026-10-28"
+  },
+  "_clmax_source": {
+    "value": 0.5,
+    "basis": "trimmed, ~8% static margin (CG ~0.36 m behind root LE), elevon up to 15 deg",
+    "range": {
+      "SM_5pct": 0.62,
+      "SM_8pct": 0.5,
+      "SM_10pct": 0.4
+    },
+    "untrimmed": 0.87,
+    "method": "XFLR5 spanload (vutaz.xfl opps, alpha 0-11, extrapolated) vs XFoil section clmax (N9, by local Re); elevon increments from a vortex lattice incl. tip fins (matches XFLR5 CL_alpha within 2.5%, NP within 3 mm)",
+    "assumed_elevons": "y 0.26-0.72 m, 25% chord, 0.8 x thin-airfoil effectiveness; up-elevon lowers section clmax by 0.6 x its dcl0",
+    "note": "XFLR5 station at y=0.2195 m (kink) is a panelling spike and was excluded",
+    "date": "2026-10-28"
+  }
 }

@@ -40,6 +40,8 @@ Usage
     python propcalc.py --no-plane --thrust-cal flat   # thrust factor above the bench data: hold (default), linear, flat
     python propcalc.py --data mydata --out results --top 10
     python propcalc.py --import-apc data_2/propellers   # add every APC PER3 .dat/.json in the folder to props.csv
+    python propcalc.py --import-xflr5 plane.xml polar.txt --alpha-ground 5 --extra-cda 0.009
+                                             # wing area/span, CD0, e, CL_ground_roll from XFLR5 into plane.json
     python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Skystars Jupiter Single 80A ESC" "CNHL MiniStar 1000 100C"
 
 Outputs (in --out folder): results.csv (every combination), ranking.png,
@@ -601,6 +603,7 @@ class Plane:
         self.empty = d["empty_mass_kg"]; self.extra = d.get("extra_propulsion_mass_g", 0) / 1000
         art = d.get("drag_articles", {"count": 0, "mass_kg_each": 0, "CdA_m2_each": 0})
         self.n_art = art["count"]; self.m_art = art["mass_kg_each"]; self.cda_art = art["CdA_m2_each"]
+        self.cda_extra = d.get("extra_CdA_m2", 0.0)  # gear, motor, payload bay... (not in the wing polar)
         self.mis = d["mission"]; self.score_factor = d.get("score_factor", 1.25)
 
     def drag(self, m, v, rho, CL=None, n_art=None):
@@ -608,7 +611,7 @@ class Plane:
         q = 0.5 * rho * v * v
         if CL is None:
             CL = m * G / (q * self.S) if q > 0 else 0
-        return q * (self.S * (self.CD0 + CL * CL / (math.pi * self.AR * self.e)) + n_art * self.cda_art)
+        return q * (self.S * (self.CD0 + CL * CL / (math.pi * self.AR * self.e)) + n_art * self.cda_art + self.cda_extra)
 
     def vstall(self, m, rho):
         return math.sqrt(2 * m * G / (rho * self.S * self.CLmax))
@@ -1416,6 +1419,191 @@ def import_apc(folder, data_dir, cfg):
 
 
 # =============================================================================
+# Airframe aero import (XFLR5 plane XML + a polar with alpha, CL, CD columns)
+# =============================================================================
+def _xflr5_wing(xml_path):
+    """Plane name, area (m2) and span (m) of the main wing in an XFLR5 plane XML (Plane > Export to XML).
+
+    Fins and other wings are left out: XFLR5 references its plane polars to the main wing area, and so does
+    propcalc's CD0 / e. Area is the planform area (along the span), XFLR5's default reference area.
+    """
+    import xml.etree.ElementTree as ET
+    root = ET.parse(xml_path).getroot()
+    pl = root.find("Plane")
+    if pl is None:
+        raise ValueError(f"{xml_path}: no <Plane> element - export the plane in XFLR5 with Plane > Export to XML")
+    unit = float((root.findtext("Units/length_unit_to_meter") or "1").strip())
+    wings = [w for w in pl.findall("wing") if (w.findtext("Type") or "").strip() == "MAINWING"]
+    if len(wings) != 1:
+        raise ValueError(f"{xml_path}: expected one MAINWING, found {len(wings)}")
+    w = wings[0]
+    if (w.findtext("Symetric") or "true").strip().lower() != "true":
+        raise ValueError(f"{xml_path}: the main wing is not symmetric - not supported")
+    secs = [(float(sec.findtext("y_position")) * unit, float(sec.findtext("Chord")) * unit)
+            for sec in w.findall("Sections/Section")]
+    if len(secs) < 2:
+        raise ValueError(f"{xml_path}: the main wing needs at least two sections")
+    half = sum((y1 - y0) * (c0 + c1) / 2 for (y0, c0), (y1, c1) in zip(secs, secs[1:]))
+    return (pl.findtext("Name") or "").strip(), 2 * half, 2 * secs[-1][0]
+
+
+def _read_polar(path):
+    """Read a polar by column name: any text / CSV table with alpha, CL and CD columns.
+
+    Works for XFLR5 plane-polar exports (.txt or .csv) and for trimmed, CFD or tunnel polars in a plain table.
+    Header lines like "Plane name : xyz" (XFLR5) are kept as info. CL and Cl (roll moment) are told apart by
+    case; a lower-case "cl" / "cd" column is accepted only when there is no other match.
+    Returns (info, alpha, CL, CD) sorted by alpha.
+    """
+    def find(cols, exact, loose):
+        hit = [i for i, c in enumerate(cols) if c == exact]
+        if not hit:
+            hit = [i for i, c in enumerate(cols) if c.lower() in loose]
+        return hit[0] if len(hit) == 1 else None
+
+    info, idx, rows = {}, None, []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            s = line.strip().strip("\ufeff")
+            if not s or s.startswith("#"):
+                continue
+            tok = [t for t in re.split(r"[,;\s]+", s) if t]
+            if idx is None:
+                ia, il, id_ = (find(tok, "alpha", ("alpha", "aoa", "alpha_deg")), find(tok, "CL", ("cl",)),
+                               find(tok, "CD", ("cd",)))
+                if None not in (ia, il, id_):
+                    idx = (ia, il, id_); continue
+                m = re.match(r"^([A-Za-z][A-Za-z ]*?)\s*:\s*,?\s*(.*?)\s*,?\s*$", s)
+                if m:
+                    info[m.group(1).strip().lower()] = m.group(2).strip()
+                elif not info and s.lower().startswith("xflr5"):
+                    info["program"] = s
+                continue
+            try:
+                vals = [float(t) for t in tok]
+            except ValueError:
+                continue
+            if len(vals) > max(idx):
+                rows.append((vals[idx[0]], vals[idx[1]], vals[idx[2]]))
+    if idx is None:
+        raise ValueError(f"{path}: no header line with alpha, CL and CD columns")
+    if len(rows) < 3:
+        raise ValueError(f"{path}: fewer than 3 data rows")
+    rows.sort()
+    return info, [r[0] for r in rows], [r[1] for r in rows], [r[2] for r in rows]
+
+
+def _fit_parabolic_polar(CL, CD, cl_min):
+    """CD = CD0 + k*CL^2 fitted to the points with CL > cl_min, minimising the relative error.
+
+    Returns CD0, k, the points used and the largest relative error on them.
+    """
+    pts = [(c * c, d) for c, d in zip(CL, CD) if c > cl_min and d > 0]
+    if len(pts) < 3:
+        raise ValueError(f"fewer than 3 polar points with CL > {cl_min:g} - lower --fit-cl-min")
+    w = [1 / (d * d) for _, d in pts]
+    s0 = sum(w); s1 = sum(wi * x for wi, (x, _) in zip(w, pts)); s2 = sum(wi * x * x for wi, (x, _) in zip(w, pts))
+    t0 = sum(wi * d for wi, (_, d) in zip(w, pts)); t1 = sum(wi * x * d for wi, (x, d) in zip(w, pts))
+    det = s0 * s2 - s1 * s1
+    cd0 = (t0 * s2 - t1 * s1) / det; k = (s0 * t1 - s1 * t0) / det
+    err = max(abs(cd0 + k * x - d) / d for x, d in pts)
+    return cd0, k, len(pts), err
+
+
+def import_xflr5(xml_path, polar_path, plane_path, alpha_ground=None, extra_cda=None, cl_min=0.15):
+    """Write the aero keys of plane.json from an XFLR5 plane XML and a polar (one polar format, any source).
+
+    From the XML (main wing only): wing_area_m2, span_m. From the polar: CD0 and oswald_e of
+    CD = CD0 + CL^2 / (pi*AR*e), fitted for CL > cl_min; e also takes up the profile drag that grows with lift,
+    so e > 1 is normal. CL_ground_roll is read off the polar at alpha_ground (deg, the wing's angle on its gear).
+    extra_CdA_m2 (gear, motor, payload bay...) is your estimate - it is not in a wing polar.
+    Masses, mission and every other key stay as they are. A hidden _aero_source records where the numbers came from.
+    Refuses to run if the polar's "Plane name" is not the XML's plane.
+    """
+    import datetime
+    name, S, b = _xflr5_wing(xml_path)
+    info, A, CL, CD = _read_polar(polar_path)
+    pname = info.get("plane name")
+    if pname is not None and pname != name:
+        sys.exit(f"polar is for plane '{pname}' but the XML is '{name}' - pick the matching pair (nothing written)")
+    if not os.path.exists(plane_path):
+        sys.exit(f"no plane file at {plane_path} - the import only updates the aero keys of an existing plane.json")
+    AR = b * b / S
+    try:
+        cd0, k, n_fit, err = _fit_parabolic_polar(CL, CD, cl_min)
+    except ValueError as ex:
+        sys.exit(str(ex))
+    e = 1 / (math.pi * AR * k)
+    speed = None
+    m = re.search(r"[-+\d.eE]+", info.get("freestream speed", ""))
+    if m:
+        speed = float(m.group(0))
+
+    warnings = []
+    clg = None
+    if alpha_ground is not None:
+        if A[0] <= alpha_ground <= A[-1]:
+            clg = _interp(alpha_ground, A, CL)
+        else:  # straight-line extrapolation from the nearest two points (the lift curve is linear well below stall)
+            i = 0 if alpha_ground < A[0] else len(A) - 2
+            clg = CL[i] + (CL[i + 1] - CL[i]) * (alpha_ground - A[i]) / (A[i + 1] - A[i])
+            warnings.append(f"alpha_ground {alpha_ground:g} deg is outside the polar ({A[0]:g} to {A[-1]:g} deg) - "
+                            f"CL_ground_roll extrapolated")
+
+    old = json.load(open(plane_path, encoding="utf-8"))
+    new_vals = dict(wing_area_m2=round(S, 4), span_m=round(b, 4), CD0=round(cd0, 5), oswald_e=round(e, 3))
+    if clg is not None:
+        new_vals["CL_ground_roll"] = round(clg, 3)
+    if extra_cda is not None:
+        new_vals["extra_CdA_m2"] = extra_cda
+    out = {}
+    for key, val in old.items():
+        if key == "_aero_source":
+            continue
+        out[key] = new_vals.get(key, val)
+        if key == "oswald_e" and "extra_CdA_m2" not in old:
+            out["extra_CdA_m2"] = new_vals.get("extra_CdA_m2", 0.0)
+    for key, val in new_vals.items():
+        out.setdefault(key, val)
+    out.setdefault("extra_CdA_m2", 0.0)
+    rel = lambda p: os.path.relpath(os.path.abspath(p), os.path.dirname(os.path.abspath(plane_path))).replace(os.sep, "/")
+    out["_aero_source"] = dict(
+        plane_xml=rel(xml_path), polar=rel(polar_path), plane_name=name, polar_name=info.get("polar name"),
+        program=info.get("program"), speed_mps=speed, aspect_ratio=round(AR, 4),
+        fit=dict(cl_min=cl_min, points=n_fit, cl_range=[round(min(c for c in CL if c > cl_min), 3), round(max(CL), 3)],
+                 max_error_pct=round(err * 100, 2)),
+        alpha_ground_deg=alpha_ground if clg is not None else old.get("_aero_source", {}).get("alpha_ground_deg"),
+        imported=datetime.date.today().isoformat())
+
+    if pname is None:
+        warnings.append("the polar has no 'Plane name' line - could not check that it belongs to this XML")
+    if err > 0.02:
+        warnings.append(f"the parabola misses the polar by up to {err * 100:.1f} % (above about 2 %, a polar-table "
+                        f"drag model would be more accurate)")
+    if clg is None:
+        warnings.append(f"no --alpha-ground given: CL_ground_roll left at {out.get('CL_ground_roll')}")
+    if not out["extra_CdA_m2"]:
+        warnings.append("extra_CdA_m2 is 0: landing gear, motor, payload bay etc. add no drag - set --extra-cda")
+    if max(CL) < 0.4:
+        warnings.append(f"the polar only reaches CL {max(CL):.2f}; drag above that is extrapolated")
+
+    with open(plane_path, "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=2, ensure_ascii=False); f.write("\n")
+
+    print(f"\nXFLR5 import: plane '{name}'  ({os.path.basename(xml_path)} + {os.path.basename(polar_path)}"
+          + (f", {speed:g} m/s" if speed else "") + ")")
+    print(f"  main wing: S = {S:.4f} m2, b = {b:.3f} m, AR = {AR:.3f}")
+    print(f"  fit CL > {cl_min:g} ({n_fit} points): CD0 = {cd0:.5f}, e = {e:.3f}, max error {err * 100:.2f} %")
+    for key in ("wing_area_m2", "span_m", "CD0", "oswald_e", "CL_ground_roll", "extra_CdA_m2"):
+        was = old.get(key, "-")
+        print(f"  {key:15s} {str(was):>10s} -> {out[key]}" + ("" if was != out[key] else "  (unchanged)"))
+    for w_ in warnings:
+        print(f"  WARNING: {w_}")
+    print(f"Updated {plane_path}")
+    return out
+
+
+# =============================================================================
 # Motor list import (rcplanes.online search export, or a CSV with brand,type,power,imax,kv,mass)
 # =============================================================================
 # Rm and I0 are not in such lists. They are estimated from Kv and mass with a fit to 16 motors whose datasheets
@@ -1547,6 +1735,14 @@ def main():
                     help="add every rule-legal prop from an unzipped UIUC-propDB folder to props.csv, then stop")
     ap.add_argument("--import-apc", metavar="FOLDER",
                     help="add every rule-legal APC PER3 .dat / .json table in FOLDER to props.csv, then stop")
+    ap.add_argument("--import-xflr5", nargs=2, metavar=("PLANE_XML", "POLAR"),
+                    help="write wing area, span, CD0, e (and CL_ground_roll / extra_CdA_m2) into plane.json from an "
+                         "XFLR5 plane XML and a polar with alpha, CL, CD columns, then stop")
+    ap.add_argument("--alpha-ground", type=float, default=None, metavar="DEG",
+                    help="xflr5 import: wing angle of attack on its gear during the ground roll -> CL_ground_roll")
+    ap.add_argument("--extra-cda", type=float, default=None, metavar="M2",
+                    help="xflr5 import: extra drag area CdA (m2) for gear, motor, payload bay... -> extra_CdA_m2")
+    ap.add_argument("--fit-cl-min", type=float, default=0.15, help="xflr5 import: fit the polar only above this CL")
     ap.add_argument("--import-motors", metavar="FILE",
                     help="add motors from an rcplanes.online result list (Rm/I0 estimated), then stop")
     ap.add_argument("--kv-min", type=float, default=900); ap.add_argument("--kv-max", type=float, default=1450)
@@ -1568,6 +1764,11 @@ def main():
     if a.import_motors:
         import_motors(a.import_motors, a.data, a.kv_min, a.kv_max, a.min_current, a.min_mass, a.max_mass,
                       a.keep_discontinued)
+        return
+
+    if a.import_xflr5:
+        import_xflr5(a.import_xflr5[0], a.import_xflr5[1], a.plane or os.path.join(a.data, "plane.json"),
+                     a.alpha_ground, a.extra_cda, a.fit_cl_min)
         return
 
     if a.import_uiuc:

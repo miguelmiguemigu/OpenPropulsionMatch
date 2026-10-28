@@ -44,6 +44,7 @@ Run from inside the `propcalc` folder.
 | `--single MOTOR PROP ESC BATTERY` | thrust / RPM / current vs airspeed for one combination (names exactly as in the CSVs) |
 | `--import-tunnel FOLDER` (+ `--tunnel-rho`, `--tunnel-min-rpm`, `--tunnel-prop-mass`) | import thrust-stand / tunnel logs |
 | `--import-uiuc FOLDER` | import the UIUC propeller database |
+| `--import-xflr5 PLANE_XML POLAR` (+ `--alpha-ground`, `--extra-cda`, `--fit-cl-min`) | write the aero keys of plane.json from XFLR5 (see below) |
 | `--import-motors FILE` (+ `--kv-min`, `--kv-max`, `--min-current`, `--min-mass`, `--max-mass`, `--keep-discontinued`) | import an rcplanes.online motor list |
 
 ## Outputs (`results/`)
@@ -86,11 +87,23 @@ Run from inside the `propcalc` folder.
 | `plane_evaluate_top` | 400 | combinations that get the full mission simulation (0 = all) |
 
 ### `plane.json` keys
-Wing: `wing_area_m2`, `span_m`, `CLmax`, `CL_ground_roll`, `CD0`, `oswald_e`. Takeoff: `rolling_friction`, `liftoff_speed_factor`
+Wing: `wing_area_m2`, `span_m`, `CLmax`, `CL_ground_roll`, `CD0`, `oswald_e`, `extra_CdA_m2` (drag area of gear, motor,
+payload bay… added to the drag at every speed). Takeoff: `rolling_friction`, `liftoff_speed_factor`
 (× stall speed), `takeoff_distance_limit_m` (15.24 = 50 ft), `takeoff_margin`. Masses: `empty_mass_kg` (airframe without payload
 and propulsion), `extra_propulsion_mass_g` (mount, wiring, spinner). `drag_articles`: `count`, `mass_kg_each`, `CdA_m2_each`.
 `mission`: `climb_altitude_m`, `climb_speed_factor`, `min_climb_rate_mps`, `cruise_speed_mps` (must be ≥ `min_cruise_speed_factor`
 × stall speed), `cruise_time_s`, `approach_time_s`, `approach_current_a`. `score_factor` = 1.25 (rules).
+
+**Aero from XFLR5:** export the plane (Plane → Export to XML) and its polar (the polar's text or CSV export), then
+```
+python3 propcalc.py --import-xflr5 "data_2/xflr5/vutaz uzky.xml" "data_2/xflr5/vutaz uzky_T1-10_0 m_s-VLM2.txt" --alpha-ground 5 --extra-cda 0.009
+```
+It takes `wing_area_m2` and `span_m` from the main wing only, fits `CD = CD0 + CL²/(π·AR·e)` to the polar above CL 0.15 (`e` also
+absorbs the profile drag that grows with lift, so e > 1 is normal), reads `CL_ground_roll` off the polar at `--alpha-ground`
+(the wing's angle on its gear) and sets `extra_CdA_m2` from `--extra-cda`. Masses, mission and the other keys are not touched;
+a hidden `_aero_source` records the files, speed, fit error and date. It refuses a polar whose "Plane name" is not the XML's
+plane. The polar is read by column name (`alpha`, `CL`, `CD`), so a trimmed XFLR5 polar, a CFD polar or a tunnel polar goes in the
+same way. `CLmax` is not set: a VLM polar has no stall.
 
 **Adding a prop:** download its APC `PER3_xxx.dat`, put it in `data_2/propellers/APC_DAT_Files/`, add a row with `format=apc`, `cal_group=apc_per3`.
 Props from another source need their own `cal_group` and at least one bench point in `calibration.csv` (otherwise they are used uncalibrated).

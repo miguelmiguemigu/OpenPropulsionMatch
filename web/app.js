@@ -706,7 +706,8 @@ async function loadHistory() {
 const PLANE_META = {
   "": { title: "Airframe", keys: {
     name: ["Name"], wing_area_m2: ["Wing area", "m²"], span_m: ["Span", "m"], CLmax: ["CL max"], CL_ground_roll: ["CL during ground roll"],
-    CD0: ["CD0 – zero-lift drag coefficient"], oswald_e: ["Oswald efficiency e"], rolling_friction: ["Rolling friction μ"],
+    CD0: ["CD0 – zero-lift drag coefficient"], oswald_e: ["Oswald efficiency e"],
+    extra_CdA_m2: ["Extra drag area CdA", "m² – gear, motor, payload bay"], rolling_friction: ["Rolling friction μ"],
     liftoff_speed_factor: ["Lift-off speed", "× stall"], takeoff_distance_limit_m: ["Takeoff distance limit", "m (15.24 = 50 ft)"],
     takeoff_margin: ["Takeoff margin", "× limit"], empty_mass_kg: ["Empty airframe mass", "kg, no payload / propulsion"],
     extra_propulsion_mass_g: ["Extra propulsion mass", "g – mount, wires, spinner"], score_factor: ["Score factor", "rules: 1.25"] } },
