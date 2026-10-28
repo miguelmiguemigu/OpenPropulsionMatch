@@ -1,6 +1,6 @@
 {
-  "_comment": "ILLUSTRATIVE airframe - replace every value with your design. Masses exclude payload and propulsion parts.",
-  "name": "Illustrative Micro airframe",
+  "_comment": "vutaz uzky. Aero from XFLR5 (_aero_source, _clmax_source); empty mass, cruise speed and drag articles from the team (2026-10-28); the other takeoff/mission values are still the illustrative defaults. Masses exclude payload and propulsion parts.",
+  "name": "vutaz uzky",
   "wing_area_m2": 0.961,
   "span_m": 1.5,
   "CLmax": 0.5,
@@ -12,18 +12,19 @@
   "liftoff_speed_factor": 1.1,
   "takeoff_distance_limit_m": 15.24,
   "takeoff_margin": 0.8,
-  "empty_mass_kg": 1.0,
+  "empty_mass_kg": 1.2,
   "extra_propulsion_mass_g": 30,
   "drag_articles": {
+    "_comment": "2x Flying Pig + 1x Waffle, entered as 3 equal articles with the average mass and CdA (totals exact: 0.9072 kg, CdA 0.0521 m2). Rule minimum weights (lb): pig 0.75, waffle 0.50. CdA = drag / (0.5 * 1.225 * 15^2) from pareto+symetryScore.xlsx 'Model assumptions' (drag at 15 m/s): pig 1.34 N -> 0.00972 m2, waffle 4.50 N -> 0.03265 m2.",
     "count": 3,
-    "mass_kg_each": 0.68,
-    "CdA_m2_each": 0.015
+    "mass_kg_each": 0.3024,
+    "CdA_m2_each": 0.01737
   },
   "mission": {
     "climb_altitude_m": 30,
     "climb_speed_factor": 1.3,
     "min_climb_rate_mps": 0.5,
-    "cruise_speed_mps": 12,
+    "cruise_speed_mps": 11,
     "cruise_time_s": 75,
     "approach_time_s": 20,
     "approach_current_a": 6,
