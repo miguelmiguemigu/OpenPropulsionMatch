@@ -616,9 +616,15 @@ class Plane:
     def vstall(self, m, rho):
         return math.sqrt(2 * m * G / (rho * self.S * self.CLmax))
 
+    def cruise_speed(self, m, rho):
+        """The set cruise speed, or faster when heavy: never below min_cruise_speed_factor x stall."""
+        return max(self.mis["cruise_speed_mps"], self.mis.get("min_cruise_speed_factor", 1.2) * self.vstall(m, rho))
+
 
 class Evaluator:
     """Precomputes curves once per combination, then finds the max takeoff mass."""
+
+    CRUISE_STEP = 0.5  # m/s between the cruise rows, counted up from cruise_speed_mps
 
     def __init__(self, sysm, plane, cfg):
         self.s, self.pl = sysm, plane
@@ -626,10 +632,8 @@ class Evaluator:
         self.vgrid = [float(v) for v in range(31)]
         full = sysm.curve(self.vgrid)
         self.T = [p["T"] for p in full]; self.Ib = [p["I_batt"] for p in full]
-        vc = plane.mis["cruise_speed_mps"]
         self.thr_grid = _linspace(0.15, 1.0, 35)
-        cr = [sysm.point(vc, th, sysm.voc_cruise) for th in self.thr_grid]
-        self.Tcr = [p["T"] for p in cr]; self.Icr = [p["I_batt"] for p in cr]
+        self._cruise = {}  # row index -> (thrust, battery current) over thr_grid, computed when first needed
         self.usable = cfg["model"]["usable_capacity_fraction"] * sysm.b.mah
 
     def _T(self, v):
@@ -637,6 +641,27 @@ class Evaluator:
 
     def _I(self, v):
         return _interp(v, self.vgrid, self.Ib)
+
+    def _cruise_row(self, k):
+        if k not in self._cruise:
+            v = self.pl.mis["cruise_speed_mps"] + k * self.CRUISE_STEP
+            cr = [self.s.point(v, th, self.s.voc_cruise) for th in self.thr_grid]
+            self._cruise[k] = ([p["T"] for p in cr], [p["I_batt"] for p in cr])
+        return self._cruise[k]
+
+    def _cruise_current(self, v, D):
+        """Battery current that holds thrust D at cruise speed v (v >= cruise_speed_mps), None if full throttle
+        can't: linear in speed between the two cruise rows around v (exact at the set speed)."""
+        f = (v - self.pl.mis["cruise_speed_mps"]) / self.CRUISE_STEP
+        k = int(f); f -= k
+        T0, I0 = self._cruise_row(k)
+        if f < 1e-9:
+            return _interp(D, T0, I0) if D <= max(T0) else None
+        T1, I1 = self._cruise_row(k + 1)
+        if D > max(T0) + f * (max(T1) - max(T0)):
+            return None
+        i0 = _interp(D, T0, I0)
+        return i0 + f * (_interp(D, T1, I1) - i0)
 
     def mission(self, m):
         pl, rho = self.pl, self.rho
@@ -654,14 +679,12 @@ class Evaluator:
             return None
         t_climb = pl.mis["climb_altitude_m"] / rc
         q_mah += self._I(vc) * t_climb / 3.6
-        if pl.mis["cruise_speed_mps"] < pl.mis.get("min_cruise_speed_factor", 1.2) * pl.vstall(m, rho):
-            return None  # too heavy to cruise this slowly (would be near/below stall)
-        D = pl.drag(m, pl.mis["cruise_speed_mps"], rho)
-        if D > max(self.Tcr):
+        vcr = pl.cruise_speed(m, rho)  # heavy planes cruise faster to stay min_cruise_speed_factor above stall
+        Icr = self._cruise_current(vcr, pl.drag(m, vcr, rho))
+        if Icr is None:
             return None
-        Icr = _interp(D, self.Tcr, self.Icr)
         q_mah += Icr * pl.mis["cruise_time_s"] / 3.6 + pl.mis["approach_current_a"] * pl.mis["approach_time_s"] / 3.6
-        return dict(roll_m=x, roll_s=t, climb_mps=rc, cruise_A=Icr, mah=q_mah)
+        return dict(roll_m=x, roll_s=t, climb_mps=rc, cruise_mps=vcr, cruise_A=Icr, mah=q_mah)
 
     def feasible(self, m):
         r = self.mission(m)
@@ -837,7 +860,8 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
             ev = Evaluator(row["_sys"], plane, cfg); best = ev.best()
             row.update(tow_kg=best["m_tow"], payload_kg=best["payload"], score=best["score"],
                        mission_mah=best["info"]["mah"] if best["info"] else float("nan"),
-                       roll_m=best["info"]["roll_m"] if best["info"] else float("nan"), _eval=ev)
+                       roll_m=best["info"]["roll_m"] if best["info"] else float("nan"),
+                       cruise_mps=best["info"]["cruise_mps"] if best["info"] else float("nan"), _eval=ev)
     key = {"avg_thrust": "avg_gf", "static_thrust": "static_gf", "net_thrust": "net_gf",
            "thrust_per_watt": "gpw", "score": "score"}[metric]
     results.sort(key=lambda r: r[key], reverse=True)
@@ -849,7 +873,7 @@ def write_csv(results, path, plane):
             "peak_motor_A", "uncapped_peak_A", "limit_A", "motor_limit_A", "batt_limit_A", "static_W", "gpw",
             "rpm_static", "prop_mass_g", "full_throttle_min"]
     if plane:
-        cols += ["tow_kg", "payload_kg", "score", "mission_mah", "roll_m"]
+        cols += ["tow_kg", "payload_kg", "score", "mission_mah", "roll_m", "cruise_mps"]
     cols += ["notes"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(cols)
@@ -968,7 +992,7 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         for k, sh in zip(range(1, 4), (0.45, 0.7, 1.0)):
             ax.plot(v / 0.3048, [pl.drag(m, x, ev.rho, n_art=k) / LBF for x in v], color="k", alpha=sh, lw=1.4,
                     label=f"Drag, {k} drag article{'s' if k > 1 else ''}")
-        vc = pl.mis["cruise_speed_mps"]
+        vc = pl.cruise_speed(m, ev.rho)
         ax.plot([vc / 0.3048], [pl.drag(m, vc, ev.rho) / LBF], "o", color="k")
         ax.annotate("cruise design point", (vc / 0.3048, pl.drag(m, vc, ev.rho) / LBF), xytext=(8, -14),
                     textcoords="offset points", fontsize=8)
@@ -1822,7 +1846,8 @@ def main():
     print(f"\nBest by {labels[metric]}: {best['motor']} + {best['prop']} + {best['esc']} + {best['battery']}")
     if plane:
         print(f"  max takeoff mass {best['tow_kg']:.2f} kg, payload {best['payload_kg']:.2f} kg "
-              f"({best['payload_kg'] / LB:.2f} lb), score {best['score']:.1f}, mission {best['mission_mah']:.0f} mAh")
+              f"({best['payload_kg'] / LB:.2f} lb), score {best['score']:.1f}, mission {best['mission_mah']:.0f} mAh, "
+              f"cruise {best['cruise_mps']:.1f} m/s")
     files = [] if a.no_plots else make_plots(results, key, a.out, plane, a.top, labels[metric])
     print(f"\nWrote {os.path.join(a.out, 'results.csv')}" + "".join(f"\n      {f}" for f in files))
 

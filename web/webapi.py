@@ -189,10 +189,10 @@ def run(opts_json):
         r = results[0]; ev = r["_eval"]; m = r["tow_kg"]
         vmin = max(plane.vstall(m, ev.rho) * 0.9, 1)
         vs = pc._linspace(vmin, 25, 60)
+        vc = plane.cruise_speed(m, ev.rho)
         tds = dict(v_fts=[v / 0.3048 for v in vs], thrust_lbf=[ev._T(v) / pc.LBF for v in vs],
                    drag_lbf=[[plane.drag(m, v, ev.rho, n_art=k) / pc.LBF for v in vs] for k in (1, 2, 3)],
-                   cruise=[plane.mis["cruise_speed_mps"] / 0.3048,
-                           plane.drag(m, plane.mis["cruise_speed_mps"], ev.rho) / pc.LBF],
+                   cruise=[vc / 0.3048, plane.drag(m, vc, ev.rho) / pc.LBF],
                    n_art=plane.n_art, tow_kg=m, vstall=plane.vstall(m, ev.rho) / 0.3048)
 
     buf = "/tmp/results.csv"
@@ -248,7 +248,8 @@ def single(opts_json):
         info_ = best["info"] or {}
         out["plane"] = dict(tow_kg=best["m_tow"], payload_kg=best["payload"], payload_lb=best["payload"] / pc.LB,
                             score=best["score"], base_kg=best["m_base"], roll_m=_num(info_.get("roll_m")),
-                            climb_mps=_num(info_.get("climb_mps")), cruise_A=_num(info_.get("cruise_A")),
+                            climb_mps=_num(info_.get("climb_mps")), cruise_mps=_num(info_.get("cruise_mps")),
+                            cruise_A=_num(info_.get("cruise_A")),
                             mah=_num(info_.get("mah")), usable_mah=ev.usable)
     return out
 

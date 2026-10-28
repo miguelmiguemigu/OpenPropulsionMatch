@@ -91,8 +91,9 @@ Wing: `wing_area_m2`, `span_m`, `CLmax`, `CL_ground_roll`, `CD0`, `oswald_e`, `e
 payload bay… added to the drag at every speed). Takeoff: `rolling_friction`, `liftoff_speed_factor`
 (× stall speed), `takeoff_distance_limit_m` (15.24 = 50 ft), `takeoff_margin`. Masses: `empty_mass_kg` (airframe without payload
 and propulsion), `extra_propulsion_mass_g` (mount, wiring, spinner). `drag_articles`: `count`, `mass_kg_each`, `CdA_m2_each`.
-`mission`: `climb_altitude_m`, `climb_speed_factor`, `min_climb_rate_mps`, `cruise_speed_mps` (must be ≥ `min_cruise_speed_factor`
-× stall speed), `cruise_time_s`, `approach_time_s`, `approach_current_a`. `score_factor` = 1.25 (rules).
+`mission`: `climb_altitude_m`, `climb_speed_factor`, `min_climb_rate_mps`, `cruise_speed_mps` (the slowest cruise; a heavier plane
+cruises faster, at `min_cruise_speed_factor` × stall speed), `cruise_time_s`, `approach_time_s`, `approach_current_a`.
+`score_factor` = 1.25 (rules).
 
 **Aero from XFLR5:** export the plane (Plane → Export to XML) and its polar (the polar's text or CSV export), then
 ```
@@ -129,6 +130,8 @@ motors fairly (several rcplanes motors have burst-type ratings) and set it to wh
 **With a plane**, each combination gets the heaviest takeoff mass that still lifts off within
 `takeoff_distance_limit_m × takeoff_margin`, climbs at ≥ `min_climb_rate_mps`, and finishes the mission
 (roll + climb to altitude at full throttle, cruise, approach) within the usable battery charge.
+Cruise is flown at `cruise_speed_mps`, or faster when the plane is heavy - never below `min_cruise_speed_factor` × stall
+speed (`cruise_mps` in `results.csv`). Cruise lasts `cruise_time_s` whatever the speed.
 Payload = that mass − airframe − propulsion − drag articles; score = `score_factor × payload_lb × N_articles`.
 
 **Without a plane**, ranking is `net_thrust` (default: mean thrust 0–12 m/s minus the mass of motor + prop + ESC +

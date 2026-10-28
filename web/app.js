@@ -389,7 +389,8 @@ function renderSingle(res) {
     const p = res.plane;
     s.unshift([fmt(p.score, 1), "flight score"], [`${fmt(p.payload_kg, 2)} kg`, `payload (${fmt(p.payload_lb, 2)} lb)`],
       [`${fmt(p.tow_kg, 2)} kg`, "max takeoff mass"], [`${fmt(p.roll_m, 1)} m`, "ground roll"],
-      [`${fmt(p.climb_mps, 1)} m/s`, "climb rate"], [`${fmt(p.mah)} / ${fmt(p.usable_mah)}`, "mission mAh / usable"]);
+      [`${fmt(p.climb_mps, 1)} m/s`, "climb rate"], [`${fmt(p.cruise_mps, 1)} m/s`, "cruise speed"],
+      [`${fmt(p.mah)} / ${fmt(p.usable_mah)}`, "mission mAh / usable"]);
   }
   $("#s-summary").innerHTML = `<div class="stats">${s.map(([v, l]) => `<div class="stat"><div class="v">${v}</div><div class="l">${esc(l)}</div></div>`).join("")}</div>` +
     (res.warnings.length ? `<ul class="warns">${res.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : "") +
@@ -714,7 +715,7 @@ const PLANE_META = {
   drag_articles: { title: "Drag articles", keys: { count: ["Number of articles"], mass_kg_each: ["Mass each", "kg"], CdA_m2_each: ["Drag area CdA each", "m²"] } },
   mission: { title: "Mission", keys: {
     climb_altitude_m: ["Climb to", "m"], climb_speed_factor: ["Climb speed", "× stall"], min_climb_rate_mps: ["Minimum climb rate", "m/s"],
-    cruise_speed_mps: ["Cruise speed", "m/s"], min_cruise_speed_factor: ["Cruise at least", "× stall"], cruise_time_s: ["Cruise time", "s"],
+    cruise_speed_mps: ["Cruise speed, at least", "m/s – flies faster if needed to stay ≥ factor × stall"], min_cruise_speed_factor: ["Cruise at least", "× stall"], cruise_time_s: ["Cruise time", "s"],
     approach_time_s: ["Approach time", "s"], approach_current_a: ["Approach current", "A"] } },
 };
 const CONFIG_META = {
