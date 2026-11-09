@@ -36,7 +36,9 @@ Both print a top-10 table and save everything to `results/`.
 | `--out NAME` | Save results to a different folder, so you don't overwrite earlier runs |
 | `--top 20` | Show and plot more combos |
 | `--no-plots` | Faster, table only |
-| `--two-blade-only` | Leave the 3-blade props (APC 11x7E-3, 12x7E-3) out. Their calibration comes from 2-blade bench tests and is unverified. Set `"multi_blade_props": "exclude"` in `config.json` to make it permanent |
+| `--two-blade-only` | Leave the 3-blade props (APC 11x7E-3, 12x7E-3) out. Their calibration comes from 2-blade bench tests and is unverified. Now the default (`"multi_blade_props": "exclude"` in `config.json`); set it to `include` to search them |
+| `--sensitivity` | After the ranking: how payload and 3-flight score change with each assumption (wing rotation, CLmax, pack R, ...) |
+| `--bench-check` | Check that the model reproduces the bench tests in `calibration.csv` |
 | `--limit-mode reject` | Only keep combos that never exceed any rating (no ESC current limit needed) |
 
 ---
@@ -93,7 +95,7 @@ All files are plain CSV/JSON. Edit them in Excel, Numbers or a text editor.
 | `batteries.csv` | adding a pack. If you can, put the measured internal resistance (charger IR reading, whole pack, mΩ) in `r_mohm`. |
 | `config.json` | rules (cells, mAh, prop size), air density, a permanent current cap (`model.max_system_current_a`) |
 
-**Drag articles** are set in `plane.json` → `drag_articles`: `count`, `mass_kg_each` and `CdA_m2_each` (drag area). Currently 3 × Rubber Chicken (0.68 kg, 0.015 m²).
+**Drag articles** are set in `plane.json` → `drag_articles` → `types` (rule minimum weight + drag area CdA of each of the 5 articles) and `reference_set` (the articles flown in the ranking, currently 2 × Flying Pig + Waffle). The campaign optimiser then picks the best articles for each of the 3 scored flights, using each type at most 4 times.
 
 **Tip:** to compare the airframe at different settings, copy `plane.json` to e.g. `plane_2waffles.json`, change it, and run
 `python3 propcalc.py --plane data_2/plane_2waffles.json --out results_2waffles`.
@@ -138,7 +140,9 @@ Re-importing replaces only the estimated motors. Your 8 datasheet motors are nev
 ```bash
 python3 propcalc.py --no-plane --metric net_thrust --max-current 80     # best propulsion
 python3 propcalc.py --max-current 80                                    # best for our plane
-python3 propcalc.py --max-current 80 --two-blade-only                   # same, 2-blade props only
+python3 propcalc.py --max-current 80 --sensitivity                     # + what each assumption is worth
+python3 propcalc.py --bench-check                                       # model vs bench tests
+python3 -m tests.test_model                                             # model checks
 python3 propcalc.py --max-current 65 --out results_65A                  # compare at a lower cap
 python3 propcalc.py --single "MOTOR" "PROP" "ESC" "BATTERY"             # one setup in detail
 python3 propcalc.py --help                                              # all options
