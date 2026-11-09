@@ -2221,6 +2221,9 @@ def main():
                     help="search only this ESC (repeat for several), e.g. the one you have")
     ap.add_argument("--battery", action="append", metavar="NAME",
                     help="search only this battery (repeat for several)")
+    ap.add_argument("--campaign-top", type=int, default=None, metavar="N",
+                    help="3-flight campaign + payload band for the best N motor+prop rows (verified and unverified "
+                         "each); overrides model.campaign_top")
     ap.add_argument("--prescreen", type=int, default=None,
                     help="keep only the N best props (by thrust with each motor) before the full search; 0 = off")
     a = ap.parse_args()
@@ -2258,6 +2261,8 @@ def main():
         lib["cfg"]["model"]["thrust_cal_extrapolation"] = a.thrust_cal
     if a.two_blade_only:
         lib["cfg"]["model"]["multi_blade_props"] = "exclude"
+    if a.campaign_top is not None:
+        lib["cfg"]["model"]["campaign_top"] = a.campaign_top
     lib["all_motors"], lib["all_props"] = list(lib["motors"]), list(lib["props"])  # calibration uses these
     if a.only_owned:
         for k in ("motors", "props", "escs", "batteries"):
