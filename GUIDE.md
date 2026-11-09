@@ -39,6 +39,7 @@ Both print a top-10 table and save everything to `results/`.
 | `--two-blade-only` | Leave the 3-blade props (APC 11x7E-3, 12x7E-3) out. Their calibration comes from 2-blade bench tests and is unverified. Now the default (`"multi_blade_props": "exclude"` in `config.json`); set it to `include` to search them |
 | `--sensitivity` | After the ranking: how payload and 3-flight score change with each assumption (wing rotation, CLmax, pack R, ...) |
 | `--bench-check` | Check that the model reproduces the bench tests in `calibration.csv` |
+| `--esc NAME`, `--battery NAME` | Search only the ESC / battery you have, e.g. `--esc "Skystars Jupiter Single 80A ESC" --battery "GNB 930 120C"` |
 | `--limit-mode reject` | Only keep combos that never exceed any rating (no ESC current limit needed) |
 
 ---

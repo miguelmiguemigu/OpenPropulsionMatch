@@ -40,7 +40,8 @@ Run from inside the `propcalc` folder.
 | `--prescreen N` | keep the best N props and N motors after the quick pre-screen (0 = everything) |
 | `--sensitivity` | payload / 3-flight score of the best combination (or the `--single` one) when one assumption changes |
 | `--bench-check` | forward-predict every bench row with `supply_v` and print the errors |
-| `--only-owned` | search only parts with `owned = yes` (optional column in the four CSVs) |
+| `--only-owned` | search only parts with `owned = yes` (optional column in the four CSVs); the calibration still uses the whole library |
+| `--esc NAME` / `--battery NAME` | search only this ESC / battery (repeat for several), e.g. the hardware you have |
 | `--out FOLDER` | output folder (default `results/`) |
 | `--top N` | how many to print / plot (default 10) |
 | `--no-plots` | skip the graphs |
@@ -68,7 +69,7 @@ Run from inside the `propcalc` folder.
 | `props/*.csv` | `J,Ct,Cp` table (static row J=0 first). `format=apc` reads APC `PER3_*.dat` directly (all RPM tables); `format=uiuc` reads `static.txt;tunnel.txt` |
 | `escs.csv` | name, cont_a, burst_a, mass_g, r_mohm, notes |
 | `batteries.csv` | name, cells, mah, mass_g, r_mohm, c_cont (optional c_burst), notes |
-| `calibration.csv` | bench points (group, motor, prop, current_a, rpm, thrust_gf, use=both/thrust/torque, source) |
+| `calibration.csv` | bench points (group, motor, prop, current_a, rpm, thrust_gf, use=both/thrust/torque, source, supply_v). `supply_v` (optional, used to fit `R_drive`) = the **loaded voltage measured at the ESC input leads** during that point, and only on **100 % throttle** rows (the fit assumes the motor sees the full supply). Leave it empty on part-throttle rows. |
 | `config.json` | rules (cells, max mAh, max prop diameter) and model settings (see below) |
 | `plane.json` | airframe + mission (optional, see below) |
 | `all_motor.txt` | raw rcplanes.online export (input for `--import-motors`) |
@@ -78,9 +79,10 @@ Run from inside the `propcalc` folder.
 |---|---|---|
 | `air_density_kg_m3` | 1.225 | air density |
 | `voc_curve_used_fraction` / `voc_curve_cell_v` | 4.18 → 3.27 V | **v2:** LiPo resting voltage per cell vs share of rated capacity used; the mission follows it (empty both lists to fall back to the fixed values below) |
-| `voc_per_cell_fresh` / `voc_per_cell_cruise` | 4.0 / 3.8 | legacy fixed pack voltage, used only without the curve |
+| `voc_per_cell_fresh` / `voc_per_cell_cruise` | 4.0 / 3.8 | legacy fixed pack voltage, used only without the curve: fresh at the start, cruise from half the capacity used on (linear in between). A `config.json` that sets these but has no curve keys (a v1 file) uses them. |
 | `pack_r_load_factor` | 1.8 | **v2:** pack resistance under load = `r_mohm` × this (sag/polarisation at 50–80 A); a `r_mohm_dc` column in `batteries.csv` overrides it |
-| `r_drive_mohm` | auto | **v2:** extra motor-side resistance (ESC losses, leads, heating, Kv drop). `auto` fits it so that every `calibration.csv` row with `supply_v` reaches its measured RPM (currently 21.5 mΩ) |
+| `pack_r_scale` | 1.0 | multiplies the resulting pack resistance whatever its source (also `r_mohm_dc`); the payload band and `--sensitivity` vary it |
+| `r_drive_mohm` | auto | **v2:** extra motor-side resistance (ESC losses, leads, heating, Kv drop). `auto` fits it so that every `calibration.csv` row with `supply_v` reaches its measured RPM (currently 21.5 mΩ); or a number in mΩ (`20`, `"20 mOhm"`) |
 | `wiring_and_plug_mohm` | 5 | extra resistance of leads, plugs, arming plug |
 | `usable_capacity_fraction` | 0.8 | share of the pack's mAh the mission may use |
 | `speeds_mps` | 0-20 | airspeeds for curves |
@@ -213,7 +215,7 @@ Notes on the 2024 data (T-Motor 2826, Mezon 55, 11x8 / 12x8 / 14x7):
 
 ## Caveats
 - Pack resistances in `batteries.csv` are **assumed** – measure yours (charger IR readout) and edit; the model multiplies them by `pack_r_load_factor`.
-- `R_drive` comes from three SunnySky bench rows only - add your own thrust-stand rows (with `supply_v`) to `calibration.csv`.
+- `R_drive` comes from three SunnySky bench rows only - add your own thrust-stand rows (with `supply_v` = loaded voltage at the ESC leads, 100 % throttle) to `calibration.csv`. The motor recommendation depends on it: at R_drive ≤ ~10 mΩ the 2826SL 1100 kV + 12x8E would beat the 1250 kV motors.
 - The 2024 tunnel 12x8 gives 12–21 % less thrust than the calibrated APC 12x8E: treat it as the pessimistic case.
 - `CL_rotate` decides most of the payload - measure it (taxi test).
 - `plane.json` is an **illustrative** airframe – replace it with your design before trusting payload/score.
