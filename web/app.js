@@ -227,7 +227,7 @@ const COLS_BASE = [
   ["Net gf", "net_gf", "num", 0], ["Peak A", "peak_A", "num", 1], ["Motor A", "peak_motor_A", "num", 1],
   ["Mass g", "prop_mass_g", "num", 0], ["g/W", "gpw", "num", 2],
 ];
-const COLS_PLANE = [["Payload kg", "payload_kg", "num", 2], ["Takeoff kg", "tow_kg", "num", 2], ["Mission mAh", "mission_mah", "num", 0], ["Score", "score", "num", 1]];
+const COLS_PLANE = [["Payload kg", "payload_kg", "num", 2], ["Takeoff kg", "tow_kg", "num", 2], ["Mission mAh", "mission_mah", "num", 0], ["Score", "score", "num", 1], ["3-flight score", "campaign_score", "num", 1]];
 
 function renderResults(res) {
   $("#results").hidden = false;
@@ -706,13 +706,15 @@ async function loadHistory() {
 // ------------------------------------------------------------------ settings forms
 const PLANE_META = {
   "": { title: "Airframe", keys: {
-    name: ["Name"], wing_area_m2: ["Wing area", "m²"], span_m: ["Span", "m"], CLmax: ["CL max"], CL_ground_roll: ["CL during ground roll"],
+    name: ["Name"], wing_area_m2: ["Wing area", "m²"], span_m: ["Span", "m"], CLmax: ["CL max"], CL_ground_roll: ["CL during ground roll"], CL_rotate: ["CL at lift-off on the gear", "= ground-roll CL if the wing can't rotate"],
     CD0: ["CD0 – zero-lift drag coefficient"], oswald_e: ["Oswald efficiency e"],
     extra_CdA_m2: ["Extra drag area CdA", "m² – gear, motor, payload bay"], rolling_friction: ["Rolling friction μ"],
     liftoff_speed_factor: ["Lift-off speed", "× stall"], takeoff_distance_limit_m: ["Takeoff distance limit", "m (15.24 = 50 ft)"],
     takeoff_margin: ["Takeoff margin", "× limit"], empty_mass_kg: ["Empty airframe mass", "kg, no payload / propulsion"],
     extra_propulsion_mass_g: ["Extra propulsion mass", "g – mount, wires, spinner"], score_factor: ["Score factor", "rules: 1.25"] } },
-  drag_articles: { title: "Drag articles", keys: { count: ["Number of articles"], mass_kg_each: ["Mass each", "kg"], CdA_m2_each: ["Drag area CdA each", "m²"] } },
+  drag_articles: { title: "Drag articles", keys: { count: ["Number of articles"], mass_kg_each: ["Mass each", "kg"], CdA_m2_each: ["Drag area CdA each", "m²"],
+    mounts: ["Article mounts"], max_scored_uses_per_type: ["Max scored uses per type"], flights_scored: ["Scored flights"] },
+    skip: ["types", "reference_set"] },
   mission: { title: "Mission", keys: {
     climb_altitude_m: ["Climb to", "m"], climb_speed_factor: ["Climb speed", "× stall"], min_climb_rate_mps: ["Minimum climb rate", "m/s"],
     cruise_speed_mps: ["Cruise speed, at least", "m/s – flies faster if needed to stay ≥ factor × stall"], min_cruise_speed_factor: ["Cruise at least", "× stall"], cruise_time_s: ["Cruise time", "s"],
@@ -722,9 +724,11 @@ const CONFIG_META = {
   rules: { title: "Competition rules", keys: { battery_cells: ["Battery cells", "S"], max_battery_mah: ["Max battery capacity", "mAh"], max_prop_diameter_in: ["Max prop diameter", "in"] } },
   model: { title: "Model", keys: {
     air_density_kg_m3: ["Air density", "kg/m³"], voc_per_cell_fresh: ["Cell voltage, fresh pack", "V"], voc_per_cell_cruise: ["Cell voltage, cruise", "V"],
+    voc_curve_used_fraction: ["Pack curve: fraction used", "0–1, comma separated"], voc_curve_cell_v: ["Pack curve: cell voltage", "V, same count"],
+    pack_r_load_factor: ["Pack resistance under load", "× r_mohm"], r_drive_mohm: ["Drive-loss resistance", "mΩ or auto (fitted to bench)"],
     wiring_and_plug_mohm: ["Wiring + plugs", "mΩ"], usable_capacity_fraction: ["Usable battery fraction", "0–1"],
     speeds_mps: ["Airspeeds for curves", "m/s, comma separated"], battery_rating: ["Battery rating used", "continuous / burst"] },
-    skip: ["current_limit_mode", "max_system_current_a", "prescreen_props", "prescreen_motors", "plane_evaluate_top", "multi_blade_props"] },
+    skip: ["current_limit_mode", "max_system_current_a", "prescreen_props", "prescreen_motors", "plane_evaluate_top", "multi_blade_props", "campaign_top"] },
   ranking_without_plane: { title: "Propulsion-only ranking", keys: { avg_up_to_mps: ["Average thrust up to", "m/s"] }, skip: ["metric"] },
 };
 function buildForm(container, obj, meta, onChange) {

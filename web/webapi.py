@@ -141,7 +141,7 @@ def save_settings(opts_json):
 ROW_KEYS = ["motor", "prop", "esc", "battery", "static_gf", "thrust_10ms", "avg_gf", "net_gf", "peak_A",
             "peak_motor_A", "uncapped_peak_A", "limit_A", "motor_limit_A", "batt_limit_A", "static_W", "gpw",
             "rpm_static", "prop_mass_g", "full_throttle_min",
-            "tow_kg", "payload_kg", "score", "mission_mah", "roll_m", "notes"]
+            "tow_kg", "payload_kg", "score", "mission_mah", "roll_m", "campaign_score", "campaign", "notes"]
 
 
 @_safe
@@ -161,7 +161,13 @@ def run(opts_json):
     if not results:
         raise ValueError("no combination passed the rules / current limits")
     top_n = int(o.get("top") or 10)
-    rows = [{k: _num(r.get(k)) for k in ROW_KEYS if k in r} for r in results[:top_n]]
+    seen, top = set(), []  # v2: each motor + prop once (its best ESC + battery); the CSV keeps every combination
+    for r in results:
+        if (r["motor"], r["prop"]) not in seen:
+            seen.add((r["motor"], r["prop"])); top.append(r)
+        if len(top) >= top_n:
+            break
+    rows = [{k: _num(r.get(k)) for k in ROW_KEYS if k in r} for r in top]
 
     # compact list of every combination for the scatter plot
     names = {k: [] for k in ("motor", "prop", "esc", "battery")}
