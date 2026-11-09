@@ -1093,7 +1093,7 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
             notes.append(f"needs current limit {s.limit:.0f} A ({s.limit_src}; would draw {peak_free:.0f} A)")
         rng = cal.bench_range(p.group); u_pk = tip_speed(max(pt["rpm"] for pt in crv), p.D)
         if rng and u_pk > rng[1] + 0.5:
-            notes.append(f"thrust calibration beyond bench data (tip speed {u_pk:.0f} m/s > {rng[1]:.0f} m/s bench max)")
+            notes.append(f"thrust calibration beyond bench data (tip speed {u_pk:.1f} m/s > {rng[1]:.1f} m/s bench max)")
         if m.estimated:
             notes.append("motor Rm/I0 estimated (+/-15 %) - check datasheet")
         im_pk = max(pt["I_motor"] for pt in crv)
@@ -1162,7 +1162,8 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
                 done[ver].add(key2)
                 for a in alt.pop((row["motor"], row["prop"], row["battery"]), []):  # best ESC by mission score
                     simulate(a)
-                    if a["score"] > row["score"] + 1e-9:
+                    # swap only for a clear gain: differences under ~1 % are within the solver's step size
+                    if a["score"] > row["score"] * (1 + ESC_SWAP_MARGIN):
                         results.append(row); results[idx] = row = a
                 tot, flights = row["_eval"].campaign()
                 row.update(campaign_score=tot, campaign=" | ".join(
@@ -1256,6 +1257,9 @@ def write_csv(results, path, plane):
             w.writerow(out)
 
 
+ESC_SWAP_MARGIN = 0.01  # evaluate_all: another ESC replaces the net-thrust pick only if its mission score is >1 % higher
+
+
 def unverified(r):
     """Why a result rests on unchecked data ('' if it doesn't): estimated motor Rm/I0, uncalibrated prop group."""
     s = r.get("_sys"); why = []
@@ -1328,7 +1332,7 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         return []
     files = []
     accent, grey = "#2563eb", "#9ca3af"
-    top = results[:n_top]
+    top = unique_top(results, n_top, True) or results[:n_top]  # same rows as the printed table: verified, one per motor+prop
     label = lambda r: f"{r['motor']} | {r['prop']} | {r['battery']} | {r['esc']}"
 
     # 1. ranking dot plot (values are often within a few %, so dots + % gap read better than bars)
@@ -1379,12 +1383,14 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         ax.set_xlabel("Propulsion mass: motor + prop + ESC + battery (g)")
         ax.set_ylabel(f"Mean thrust (gf)"); ttl = "Mean thrust vs propulsion mass - every combination"
     ax.scatter(xs, ys, s=14, color=grey)
+    b = top[0]  # #1 of the printed table (verified data)
+    bx, by = (b["peak_A"], b["payload_kg"]) if plane else (b["prop_mass_g"], b["avg_gf"])
     if not plane and key == "net_gf":  # line of equal net thrust through #1
         xl = np.array([min(xs), max(xs)])
-        ax.plot(xl, xl + results[0]["net_gf"], ls="--", color=accent, lw=1)
-        ax.text(xl[0], xl[0] + results[0]["net_gf"] - 12, "  line of equal net thrust to #1 (better = above)", color=accent, fontsize=8, va="top")
-    ax.scatter([xs[0]], [ys[0]], s=70, color=accent, zorder=3)
-    ax.annotate(f"#1 {label(results[0])}", (xs[0], ys[0]), xytext=(-10, 10), textcoords="offset points",
+        ax.plot(xl, xl + b["net_gf"], ls="--", color=accent, lw=1)
+        ax.text(xl[0], xl[0] + b["net_gf"] - 12, "  line of equal net thrust to #1 (better = above)", color=accent, fontsize=8, va="top")
+    ax.scatter([bx], [by], s=70, color=accent, zorder=3)
+    ax.annotate(f"#1 {label(b)}", (bx, by), xytext=(-10, 10), textcoords="offset points",
                 fontsize=8, color=accent, ha="right")
     if plane:
         ax.set_xlabel("Peak battery current (A)")
@@ -1395,7 +1401,7 @@ def make_plots(results, key, out, plane, n_top, metric_label):
 
     # 4. TDS graph: thrust available vs drag (lbf vs ft/s) for the best combination
     if plane:
-        r = results[0]; ev = r["_eval"]; pl = plane; m = r["tow_kg"]
+        r = (unique_top(results, 1, True) or results)[0]; ev = r["_eval"]; pl = plane; m = r["tow_kg"]  # verified best
         v = np.linspace(max(pl.vstall(m, ev.rho) * 0.9, 1), 25, 80)
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(v / 0.3048, [ev._T(x) / LBF for x in v], color=accent, lw=2.8, label="Thrust available (full throttle)")
@@ -2319,8 +2325,10 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     write_csv(results, os.path.join(a.out, "results.csv"), plane)
     print_top(results, key, a.top, plane)
-    best = results[0]
-    print(f"\nBest by {labels[metric]}: {best['motor']} + {best['prop']} + {best['esc']} + {best['battery']}")
+    best = (unique_top(results, 1, True) or results)[0]  # verified data first, as in the main table
+    why = unverified(best)
+    print(f"\nBest by {labels[metric]}: {best['motor']} + {best['prop']} + {best['esc']} + {best['battery']}"
+          + (f"  (UNVERIFIED: {why})" if why else ""))
     if plane:
         print(f"  max takeoff mass {best['tow_kg']:.2f} kg, payload {best['payload_kg']:.2f} kg "
               f"({best['payload_kg'] / LB:.2f} lb), score {best['score']:.1f}, mission {best['mission_mah']:.0f} mAh, "
