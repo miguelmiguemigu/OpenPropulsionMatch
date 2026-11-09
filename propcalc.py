@@ -19,10 +19,12 @@ motor x propeller x ESC x battery, ranks them and draws graphs of the best ones.
 Model (per operating point)
     T = Ct*rho*n^2*D^4      P = Cp*rho*n^3*D^5      Q = P/(2*pi*n)      J = V/(n*D)
     I_motor = Q/Kt + I0     I_batt = throttle*I_motor      Kt = 60/(2*pi*Kv)
-    V_batt = Voc - I_batt*(R_pack + R_wiring)
-    RPM = Kv*(throttle*V_batt - I_motor*(Rm + R_esc))
-  An ESC current limit is modelled by reducing throttle until I_motor <= min(motor, ESC rating) and
-  I_batt <= min(battery rating, max_system_current_a).
+    V_batt = Voc(charge used) - I_batt*(R_pack*pack_r_load_factor + R_wiring)
+    RPM = Kv*(throttle*V_batt - I_motor*(Rm + R_esc + R_drive))
+  Voc follows a LiPo resting-voltage curve over the mission (config voc_curve_*). R_drive (drive losses
+  the simple motor model misses) is fitted so the calibration.csv bench rows with supply_v reach their
+  measured RPM (--bench-check). An ESC current limit is modelled by reducing throttle until
+  I_motor <= min(motor, ESC rating) and I_batt <= min(battery rating, max_system_current_a).
 
 With a plane file the ranking is the estimated flight score: the heaviest
 takeoff mass that still (a) lifts off within the takeoff limit, (b) climbs,
@@ -43,6 +45,8 @@ Usage
     python propcalc.py --import-xflr5 plane.xml polar.txt --alpha-ground 5 --extra-cda 0.009
                                              # wing area/span, CD0, e, CL_ground_roll from XFLR5 into plane.json
     python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Skystars Jupiter Single 80A ESC" "CNHL MiniStar 1000 100C"
+    python propcalc.py --max-current 80 --esc "Skystars Jupiter Single 80A ESC" --battery "GNB 930 120C" --sensitivity
+    python propcalc.py --bench-check                    # bench rows vs model
 
 Outputs (in --out folder): results.csv (every combination), ranking.png,
 thrust_curves.png, and with a plane also payload_vs_current.png and
