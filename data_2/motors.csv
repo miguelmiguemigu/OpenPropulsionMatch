@@ -54,7 +54,6 @@ Leopard LC4250-4.5T 960kv,Leopard,960,14.3,2.73,10,208,75,"75 A, 823 W (duration
 RedRock 2826/04 900,RedRock,900,21.7,1.95,10,171,75,"75 A, 840 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Surpass C3542-1250,Surpass,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Spitz C3542-05 1250,Spitz,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
-ROXXY C35-42-05 1100,ROXXY,1100,21.3,1.96,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 RedRock 2826/03 1100,RedRock,1100,14.5,2.67,10,171,75,"75 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Plettenberg Orbit 15-12,Plettenberg,1290,10.6,3.40,10,170,55,"55 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 KingVal 3542 1250KV,KingVal,1250,16.4,2.40,10,132,65,"65 A, 850 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
@@ -67,7 +66,6 @@ T-Motor AS2814-1200,T-Motor,1200,22.8,1.85,10,112,61,"61 A, 885 W (duration unkn
 Cobra CM-3520/10,Cobra,980,13.5,2.85,10,210,60,"60 A, 890 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Cobra C-3520/10,Cobra,980,13.5,2.85,10,210,60,"60 A, 890 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 T-Motor AT2820-1050,T-Motor,1050,21.6,1.94,10,139,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
-ROXXY D35-50-05 1150,ROXXY,1150,15.8,2.49,10,152,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Kavan 3548 KV900,Kavan,900,21.0,2.01,10,175,57,"57 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Kavan 3542 KV950,Kavan,950,26.5,1.66,10,139,65,"65 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Hacker A40-16S V4 Kv1000,Hacker,1000,15.0,2.61,10,190,60,"60 A, 900 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
@@ -83,7 +81,6 @@ Flash Hobby D3542 EVO 1250,Flash Hobby,1250,15.7,2.48,10,136,63,"63 A, 962 W (du
 T-Motor AS2820-1050,T-Motor,1050,20.5,2.03,10,144,67,"67 A, 963 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Surpass C3548-900,Surpass,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Spitz C3548-05 900,Spitz,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
-ROXXY D35-55-04 900,ROXXY,900,21.0,2.01,10,175,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 KingVal 3548 900KV,KingVal,900,21.6,1.97,10,172,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 Kavan 3542 KV1150,Kavan,1150,17.6,2.28,10,141,70,"70 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes
 HobbyStar 2826-05 900KV,HobbyStar,900,24.7,1.77,10,157,60,"60 A, 1000 W (duration unknown)",rcplanes.online list; Rm/I0 estimated,yes

@@ -19,10 +19,12 @@ motor x propeller x ESC x battery, ranks them and draws graphs of the best ones.
 Model (per operating point)
     T = Ct*rho*n^2*D^4      P = Cp*rho*n^3*D^5      Q = P/(2*pi*n)      J = V/(n*D)
     I_motor = Q/Kt + I0     I_batt = throttle*I_motor      Kt = 60/(2*pi*Kv)
-    V_batt = Voc - I_batt*(R_pack + R_wiring)
-    RPM = Kv*(throttle*V_batt - I_motor*(Rm + R_esc))
-  An ESC current limit is modelled by reducing throttle until I_motor <= min(motor, ESC rating) and
-  I_batt <= min(battery rating, max_system_current_a).
+    V_batt = Voc(charge used) - I_batt*(R_pack*pack_r_load_factor + R_wiring)
+    RPM = Kv*(throttle*V_batt - I_motor*(Rm + R_esc + R_drive))
+  Voc follows a LiPo resting-voltage curve over the mission (config voc_curve_*). R_drive (drive losses
+  the simple motor model misses) is fitted so the calibration.csv bench rows with supply_v reach their
+  measured RPM (--bench-check). An ESC current limit is modelled by reducing throttle until
+  I_motor <= min(motor, ESC rating) and I_batt <= min(battery rating, max_system_current_a).
 
 With a plane file the ranking is the estimated flight score: the heaviest
 takeoff mass that still (a) lifts off within the takeoff limit, (b) climbs,
@@ -43,6 +45,8 @@ Usage
     python propcalc.py --import-xflr5 plane.xml polar.txt --alpha-ground 5 --extra-cda 0.009
                                              # wing area/span, CD0, e, CL_ground_roll from XFLR5 into plane.json
     python propcalc.py --single "HW 2820SL 1250kV" "APC 12x8E" "Skystars Jupiter Single 80A ESC" "CNHL MiniStar 1000 100C"
+    python propcalc.py --max-current 80 --esc "Skystars Jupiter Single 80A ESC" --battery "GNB 930 120C" --sensitivity
+    python propcalc.py --bench-check                    # bench rows vs model
 
 Outputs (in --out folder): results.csv (every combination), ranking.png,
 thrust_curves.png, and with a plane also payload_vs_current.png and
@@ -78,10 +82,16 @@ LBF = 4.4482216152605  # N per lbf
 DEFAULT_CONFIG = {
     "rules": {"battery_cells": 3, "max_battery_mah": 1000, "max_prop_diameter_in": 12},
     "model": {"air_density_kg_m3": 1.225, "voc_per_cell_fresh": 4.0, "voc_per_cell_cruise": 3.8,
+              # v2: LiPo resting voltage per cell vs fraction of rated capacity used (typical LiPo OCV chart,
+              # 4.18 V at the start = charged pack after a short wait on the flight line). Set both lists to [] to go
+              # back to the fixed voc_per_cell_fresh / voc_per_cell_cruise values.
+              "voc_curve_used_fraction": [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0],
+              "voc_curve_cell_v": [4.18, 4.15, 4.11, 4.02, 3.95, 3.87, 3.84, 3.80, 3.77, 3.73, 3.69, 3.61, 3.27],
+              "pack_r_load_factor": 1.8, "r_drive_mohm": "auto",
               "wiring_and_plug_mohm": 5, "usable_capacity_fraction": 0.8,
               "speeds_mps": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
               "current_limit_mode": "cap", "battery_rating": "continuous", "thrust_cal_extrapolation": "hold",
-              "multi_blade_props": "include"},
+              "multi_blade_props": "exclude", "plane_evaluate_top": 600, "campaign_top": 10},
     "ranking_without_plane": {"metric": "net_thrust", "avg_up_to_mps": 12},
 }
 
@@ -232,6 +242,7 @@ class Prop:
         self.max_rpm = _f(row, "max_rpm", 1e9)
         self.blades = int(_f(row, "blades", blades_from_name(self.name)))  # optional 'blades' column overrides the name
         self.include = (row.get("include", "yes") or "yes").lower() not in ("no", "false", "0")
+        self.owned = (row.get("owned", "") or "").lower() in ("yes", "y", "1", "true")
         fmt = (row.get("format", "csv") or "csv").lower()
         files = [os.path.join(base, p.strip()) for p in row["file"].split(";")]
         self.tables = []  # list of (rpm or None, J[], Ct[], Cp[])
@@ -328,12 +339,14 @@ class Motor:
         self.include = (r.get("include", "yes") or "yes").lower() not in ("no", "false", "0")
         self.estimated = "estimated" in (r.get("source", "") + r.get("rating_note", "")).lower()
         self.kt = 60 / (2 * math.pi * self.kv)
+        self.owned = (r.get("owned", "") or "").lower() in ("yes", "y", "1", "true")
 
 
 class ESC:
     def __init__(self, r):
         self.name = r["name"]; self.cont = _f(r, "cont_a"); self.burst = _f(r, "burst_a", self.cont)
         self.mass = _f(r, "mass_g"); self.r = _f(r, "r_mohm", 3) / 1000
+        self.owned = (r.get("owned", "") or "").lower() in ("yes", "y", "1", "true")
 
 
 class Battery:
@@ -342,9 +355,38 @@ class Battery:
         self.mass = _f(r, "mass_g"); self.r = _f(r, "r_mohm") / 1000
         self.c_cont = _f(r, "c_cont"); self.c_burst = _f(r, "c_burst", self.c_cont)
         self.notes = r.get("notes", "")
+        # v2: r_mohm is the charger IR reading (or a guess). Under a 50-80 A load the pack sags more than that
+        # (polarisation), so the model uses r_mohm x model.pack_r_load_factor, unless a measured DC resistance under
+        # load is given in the optional column r_mohm_dc.
+        self.r_dc = _f(r, "r_mohm_dc", 0) / 1000 or None
+        self.owned = (r.get("owned", "") or "").lower() in ("yes", "y", "1", "true")
+
+    def r_load(self, factor):
+        """Effective DC resistance (ohm) under load."""
+        return self.r_dc if self.r_dc else self.r * factor
 
     def imax(self, basis="continuous"):
         return (self.c_burst if basis == "burst" else self.c_cont) * self.mah / 1000
+
+
+def voc_curve(mdl):
+    """(used fractions, cell volts) from model.voc_curve_used_fraction / voc_curve_cell_v, or None (legacy fixed
+    voc_per_cell_fresh / voc_per_cell_cruise)."""
+    xs, ys = mdl.get("voc_curve_used_fraction"), mdl.get("voc_curve_cell_v")
+    if not xs or not ys:
+        return None
+    if len(xs) != len(ys) or any(b <= a for a, b in zip(xs, xs[1:])):
+        raise ValueError("voc_curve_used_fraction must rise and have as many values as voc_curve_cell_v")
+    return [float(x) for x in xs], [float(y) for y in ys]
+
+
+_WARNED = set()
+
+
+def _warn_once(msg):
+    """Print a warning only the first time (Calibration etc. are rebuilt many times per run)."""
+    if msg not in _WARNED:
+        _WARNED.add(msg); print(msg)
 
 
 def load_config(base):
@@ -354,6 +396,13 @@ def load_config(base):
         for k, v in json.load(open(path, encoding="utf-8")).items():
             if isinstance(v, dict):
                 cfg.setdefault(k, {}).update(v)
+                # A v1 config.json sets voc_per_cell_fresh / _cruise and has no voltage curve: honour its fixed
+                # values instead of silently switching to the default v2 curve.
+                if (k == "model" and ("voc_per_cell_fresh" in v or "voc_per_cell_cruise" in v)
+                        and "voc_curve_used_fraction" not in v and "voc_curve_cell_v" not in v):
+                    cfg["model"]["voc_curve_used_fraction"], cfg["model"]["voc_curve_cell_v"] = [], []
+                    _warn_once("  config.json sets voc_per_cell_fresh/_cruise without a voltage curve: using the "
+                               "fixed values (add voc_curve_used_fraction / voc_curve_cell_v for the v2 model)")
     return cfg
 
 
@@ -403,9 +452,11 @@ class Calibration:
             raise ValueError(f"thrust_cal_extrapolation must be one of {', '.join(self.MODES)} (got '{self.mode}')")
         self.groups = {}
         self.bench = {}  # group -> True if it has thrust bench points
-        motors = {m.name: m for m in lib["motors"]}
-        props = {p.name: p for p in lib["props"]}
-        used = {p.group for p in lib["props"] if p.include}
+        # the calibration always uses the whole library: a search restricted to some parts (--only-owned) must not
+        # lose the bench rows of motors/props it doesn't search
+        motors = {m.name: m for m in lib.get("all_motors") or lib["motors"]}
+        props = {p.name: p for p in lib.get("all_props") or lib["props"]}
+        used = {p.group for p in props.values() if p.include}
         by_group = {}
         for r in lib["calibration"]:
             by_group.setdefault(r["group"], []).append(r)
@@ -415,7 +466,7 @@ class Calibration:
                 m, p = motors.get(r["motor"]), props.get(r["prop"])
                 if m is None or p is None:
                     if g in used:  # rows of groups no prop uses (e.g. 'uiuc' without UIUC props) are ignored quietly
-                        print(f"  calibration: skipping row ({r['motor']}, {r['prop']}) - not in library")
+                        _warn_once(f"  calibration: skipping row ({r['motor']}, {r['prop']}) - not in library")
                     continue
                 rpm = float(r["rpm"]); n = rpm / 60
                 ct, cp = p.coef(0.0, rpm)
@@ -433,6 +484,66 @@ class Calibration:
                 by_tip.setdefault(round(u, 6), []).append(k)
             self.groups[g] = (_mean(kq) if kq else 1.0, sorted((u, _mean(k)) for u, k in by_tip.items()) or [(0, 1.0)])
             self.bench[g] = bool(by_tip)
+        # Electrical closure (v2): a bench row with a known supply voltage must also reach its measured RPM.
+        # V_supply = RPM/Kv + I*(Rm + R_esc + R_drive)  ->  R_drive per row; the mean is used for every system.
+        # R_drive lumps what the simple motor model misses: ESC switching/conduction above the assumed 3 mOhm,
+        # bench leads, winding heating and Kv drop under load. Without it the model over-predicts RPM by 7-16 %
+        # on its own bench points (and thrust by 11-37 %).
+        mdl = lib.get("cfg", {}).get("model", {})
+        self.r_drive_rows = []  # (motor, current, rpm, supply_v, R_drive ohm)
+        seen = set()
+        for r in lib["calibration"]:
+            m = motors.get(r["motor"]); v = r.get("supply_v", "")
+            if m is None or v in ("", None):
+                continue
+            I, rpm, V = float(r["current_a"]), float(r["rpm"]), float(v)
+            key = (r["motor"], I, rpm, V)  # numbers, so "41.3" and "41.30" are the same bench point
+            if key in seen:  # the same bench point listed for several prop groups
+                continue
+            seen.add(key)
+            self.r_drive_rows.append((r["motor"], I, rpm, V, (V - rpm / m.kv) / I - m.rm - self.R_ESC_BENCH))
+        fixed = self.parse_r_drive(mdl.get("r_drive_mohm", "auto"))
+        if fixed is not None:
+            self.r_drive, self.r_drive_src = fixed / 1000, "config model.r_drive_mohm"
+        elif self.r_drive_rows:
+            self.r_drive = max(_mean(x[4] for x in self.r_drive_rows), 0.0)
+            self.r_drive_src = f"fitted to {len(self.r_drive_rows)} bench rows"
+        else:
+            self.r_drive, self.r_drive_src = 0.0, "no bench rows with supply_v"
+
+    R_ESC_BENCH = 0.003  # ESC resistance assumed for the bench ESC when fitting R_drive (same default as escs.csv)
+
+    @staticmethod
+    def parse_r_drive(v):
+        """model.r_drive_mohm: 'auto' / '' / None -> None (fit it), else mOhm as a number ('20', '20 mOhm', 20)."""
+        if v is None or isinstance(v, (int, float)) and not isinstance(v, bool):
+            return None if v is None else float(v)
+        s = str(v).strip().lower()
+        if s in ("", "auto"):
+            return None
+        m = re.match(r"^([0-9]*\.?[0-9]+)\s*(mohm|mω|mΩ)?$", s)
+        if not m:
+            raise ValueError(f"model.r_drive_mohm must be 'auto' or a number in mOhm (got '{v}')")
+        return float(m.group(1))
+
+    def bench_check(self, lib, cfg):
+        """Forward-predict each bench row through System at its supply voltage (stiff supply, no pack/leads).
+        Returns rows (motor, prop, I meas, I model, rpm meas, rpm model, gf meas, gf model)."""
+        motors = {m.name: m for m in lib.get("all_motors") or lib["motors"]}
+        props = {p.name: p for p in lib.get("all_props") or lib["props"]}
+        esc = ESC(dict(name="bench ESC", cont_a="1000", mass_g="0", r_mohm=str(self.R_ESC_BENCH * 1000)))
+        c = json.loads(json.dumps(cfg)); c["model"]["wiring_and_plug_mohm"] = 0; c["model"]["current_limit_mode"] = "ignore"
+        out = []
+        for r in lib["calibration"]:
+            m, p, v = motors.get(r["motor"]), props.get(r["prop"]), r.get("supply_v", "")
+            if m is None or p is None or v in ("", None) or not p.include:
+                continue
+            bat = Battery(dict(name="bench supply", cells="1", mah="1000", mass_g="0", r_mohm="0", c_cont="1000"))
+            s = System(m, p, esc, bat, self, c)
+            pt = s.point(0.0, 1.0, float(v), cap=None)
+            out.append((m.name, p.name, float(r["current_a"]), pt["I_motor"], float(r["rpm"]), pt["rpm"],
+                        float(r["thrust_gf"]), pt["gf"]))
+        return out
 
     def torque(self, group):
         return self.groups.get(group, (1.0, None))[0]
@@ -460,6 +571,9 @@ class Calibration:
         return _interp(u, [a for a, _ in pts], [b for _, b in pts])
 
     def describe(self, props=()):
+        print(f"  drive-loss resistance R_drive {self.r_drive * 1000:.1f} mOhm ({self.r_drive_src})"
+              + (": per row " + ", ".join(f"{x[0]} {x[4] * 1000:.1f}" for x in self.r_drive_rows)
+                 if self.r_drive_rows else ""))
         for g in sorted({p.group for p in props if p.include} - set(self.groups)):
             print(f"  calibration group '{g}': none - prop data used as measured")
         for g, (kq, pts) in self.groups.items():
@@ -487,14 +601,23 @@ class System:
 
     def __init__(self, motor, prop, esc, battery, cal, cfg):
         self.m, self.p, self.e, self.b = motor, prop, esc, battery
-        mdl = cfg["model"]
+        mdl = cfg["model"]; self.cfg_model = mdl
         self.rho = mdl["air_density_kg_m3"]
-        self.r_line = battery.r + mdl["wiring_and_plug_mohm"] / 1000  # battery side: pack + leads/plugs
-        self.r_motor = motor.rm + esc.r                                # motor side: winding + ESC FETs
+        # pack_r_scale (default 1) scales the result whatever its source (r_mohm x factor or r_mohm_dc); the
+        # payload band and --sensitivity vary it
+        self.r_pack = battery.r_load(mdl.get("pack_r_load_factor", 1.0)) * mdl.get("pack_r_scale", 1.0)
+        self.r_line = self.r_pack + mdl["wiring_and_plug_mohm"] / 1000  # battery side: pack + leads/plugs
+        self.r_drive = getattr(cal, "r_drive", 0.0)
+        self.r_motor = motor.rm + esc.r + self.r_drive                 # motor side: winding + ESC FETs + drive losses
         self.kq = cal.torque(prop.group)
         self.cal = cal
-        self.voc_fresh = battery.cells * mdl["voc_per_cell_fresh"]
-        self.voc_cruise = battery.cells * mdl["voc_per_cell_cruise"]
+        self.cells = battery.cells
+        self.voc_curve = voc_curve(mdl)
+        self.voc_legacy = self.voc_curve is None
+        if self.voc_legacy:  # v1 fixed values: fresh at the start, cruise from half used on (linear in between)
+            self.voc_curve = ([0.0, 0.5], [float(mdl["voc_per_cell_fresh"]), float(mdl["voc_per_cell_cruise"])])
+        self.voc_fresh = self.voc_at(0.0)
+        self.voc_cruise = self.voc_at(0.5)
         mode = mdl.get("current_limit_mode", "cap")
         lim_m = [(motor.imax, "motor rating"), (esc.cont, "ESC rating")]
         lim_b = [(battery.imax(mdl.get("battery_rating", "continuous")), "battery rating")]
@@ -509,6 +632,11 @@ class System:
         self.limit_src = (src_m if self.limit_motor <= self.limit_batt else src_b) if on else ""
         self.mode = mode
         self.mass = motor.mass + prop.mass + esc.mass + battery.mass
+
+    def voc_at(self, used_fraction):
+        """Pack open-circuit voltage after using this fraction of the rated capacity."""
+        xs, ys = self.voc_curve
+        return self.cells * _interp(used_fraction, xs, ys)
 
     def _coeffs(self, rpm, v):
         n = rpm / 60.0
@@ -592,122 +720,257 @@ class System:
 # Plane / mission model
 # =============================================================================
 class Plane:
+    """Airframe + mission. v2 additions (all optional, older plane.json files still work):
+    CL_rotate          highest CL the wing reaches on its gear at lift-off (a flying wing may not rotate). Lift-off
+                       speed = max(liftoff_speed_factor x V_stall, speed where CL_rotate gives lift = weight).
+                       Missing -> CL_ground_roll (no rotation, the conservative case).
+    drag_articles.types           {name: {min_weight_lb, mass_kg (optional, default = rule minimum), CdA_m2}}
+    drag_articles.reference_set   [type names] flown in the ranking (count/mass/CdA are then derived from it)
+    drag_articles.max_scored_uses_per_type (4) and flights_scored (3) for the campaign optimiser."""
+
     def __init__(self, path):
         d = dict(path) if isinstance(path, dict) else json.load(open(path, encoding="utf-8"))
         self.d = d; self.name = d.get("name", "plane" if isinstance(path, dict) else os.path.basename(path))
         self.S = d["wing_area_m2"]; self.AR = d["span_m"] ** 2 / self.S
         self.CLmax = d["CLmax"]; self.CLg = d.get("CL_ground_roll", 0.5); self.CD0 = d["CD0"]
+        self.CL_rotate = d.get("CL_rotate", self.CLg)
+        for k, v in (("CLmax", self.CLmax), ("CL_rotate", self.CL_rotate), ("wing_area_m2", self.S)):
+            if not isinstance(v, (int, float)) or v <= 0:
+                raise ValueError(f"plane.json: {k} must be a number above 0 (got {v!r})")
         self.e = d.get("oswald_e", 0.8); self.mu = d.get("rolling_friction", 0.04)
         self.klof = d.get("liftoff_speed_factor", 1.1)
         self.x_lim = d["takeoff_distance_limit_m"] * d.get("takeoff_margin", 1.0)
         self.empty = d["empty_mass_kg"]; self.extra = d.get("extra_propulsion_mass_g", 0) / 1000
         art = d.get("drag_articles", {"count": 0, "mass_kg_each": 0, "CdA_m2_each": 0})
-        self.n_art = art["count"]; self.m_art = art["mass_kg_each"]; self.cda_art = art["CdA_m2_each"]
+        self.types = {}
+        for name, t in (art.get("types") or {}).items():
+            m = t.get("mass_kg", t["min_weight_lb"] * LB)
+            if m < t["min_weight_lb"] * LB - 1e-9:
+                raise ValueError(f"drag article '{name}': mass_kg {m} is below the rule minimum {t['min_weight_lb']} lb")
+            self.types[name] = (m, t["CdA_m2"])
+        self.max_uses = art.get("max_scored_uses_per_type", 4)
+        self.flights_scored = art.get("flights_scored", 3)
+        self.mounts = art.get("mounts", 3)
+        ref = art.get("reference_set")
+        if ref and self.types:
+            unknown = [a for a in ref if a not in self.types]
+            if unknown:
+                raise ValueError(f"plane.json drag_articles.reference_set: unknown type(s) {', '.join(map(str, unknown))} "
+                                 f"(types: {', '.join(self.types)})")
+            if len(ref) > self.mounts:
+                raise ValueError(f"plane.json drag_articles.reference_set has {len(ref)} articles but only "
+                                 f"{self.mounts} mounts")
+            self.ref_set = tuple(ref)
+            self.n_art, self.m_art, self.cda_art = self.set_props(self.ref_set, each=True)
+        else:
+            missing = [k for k in ("count", "mass_kg_each", "CdA_m2_each") if k not in art]
+            if missing:
+                raise ValueError("plane.json drag_articles: set reference_set (a list of type names) when using "
+                                 f"types, or give {', '.join(missing)} for identical articles")
+            self.ref_set = None
+            self.n_art = art["count"]; self.m_art = art["mass_kg_each"]; self.cda_art = art["CdA_m2_each"]
         self.cda_extra = d.get("extra_CdA_m2", 0.0)  # gear, motor, payload bay... (not in the wing polar)
         self.mis = d["mission"]; self.score_factor = d.get("score_factor", 1.25)
 
-    def drag(self, m, v, rho, CL=None, n_art=None):
-        n_art = self.n_art if n_art is None else n_art
+    def set_props(self, arts, each=False):
+        """(count, total mass kg, total CdA m2) of an article set; with each=True mass and CdA per article."""
+        n = len(arts)
+        m = sum(self.types[a][0] for a in arts); c = sum(self.types[a][1] for a in arts)
+        return (n, m / n, c / n) if each and n else (n, m, c)
+
+    def drag(self, m, v, rho, CL=None, n_art=None, arts=None):
+        """arts = tuple of article type names (v2); else n_art x the average article (old behaviour)."""
+        if arts is not None:
+            cda_art = self.set_props(arts)[2]
+        else:
+            cda_art = (self.n_art if n_art is None else n_art) * self.cda_art
         q = 0.5 * rho * v * v
         if CL is None:
             CL = m * G / (q * self.S) if q > 0 else 0
-        return q * (self.S * (self.CD0 + CL * CL / (math.pi * self.AR * self.e)) + n_art * self.cda_art + self.cda_extra)
+        return q * (self.S * (self.CD0 + CL * CL / (math.pi * self.AR * self.e)) + cda_art + self.cda_extra)
 
     def vstall(self, m, rho):
         return math.sqrt(2 * m * G / (rho * self.S * self.CLmax))
+
+    def vliftoff(self, m, rho):
+        """Lift-off speed: liftoff_speed_factor x V_stall, but never below the speed where the wing's on-gear
+        CL_rotate carries the weight (a flying wing often cannot rotate to CLmax/1.21 on its gear)."""
+        return max(self.klof * self.vstall(m, rho), math.sqrt(2 * m * G / (rho * self.S * self.CL_rotate)))
+
+    def rotation_limited(self, m, rho):
+        return math.sqrt(2 * m * G / (rho * self.S * self.CL_rotate)) > self.klof * self.vstall(m, rho) + 1e-9
 
     def cruise_speed(self, m, rho):
         """The set cruise speed, or faster when heavy: never below min_cruise_speed_factor x stall."""
         return max(self.mis["cruise_speed_mps"], self.mis.get("min_cruise_speed_factor", 1.2) * self.vstall(m, rho))
 
+    def article_sets(self):
+        """Every multiset of 1..mounts article types (only with drag_articles.types)."""
+        names = sorted(self.types)
+        return [c for k in range(1, self.mounts + 1) for c in itertools.combinations_with_replacement(names, k)]
+
 
 class Evaluator:
-    """Precomputes curves once per combination, then finds the max takeoff mass."""
+    """Precomputes curves once per combination, then finds the max takeoff mass.
+
+    v2: the pack voltage follows its state of charge through the mission (curves at a few charge levels,
+    interpolated), lift-off uses Plane.vliftoff, and best() takes an article set (tuple of type names)."""
 
     CRUISE_STEP = 0.5  # m/s between the cruise rows, counted up from cruise_speed_mps
+    SOC_GRID = (0.0, 0.4, 0.8)  # fractions of rated capacity used at which the curves are computed
 
     def __init__(self, sysm, plane, cfg):
         self.s, self.pl = sysm, plane
         self.rho = sysm.rho
         self.vgrid = [float(v) for v in range(31)]
-        full = sysm.curve(self.vgrid)
-        self.T = [p["T"] for p in full]; self.Ib = [p["I_batt"] for p in full]
+        self.mah = sysm.b.mah
+        uf = min(float(cfg["model"]["usable_capacity_fraction"]), 1.0)
+        if uf > self.SOC_GRID[-1] + 1e-9:  # more usable charge than the grid covers: add a point at the end
+            self.SOC_GRID = self.SOC_GRID + (uf,)
+        self.T_soc, self.I_soc = [], []
+        for u in self.SOC_GRID:
+            full = sysm.curve(self.vgrid, sysm.voc_at(u))
+            self.T_soc.append([p["T"] for p in full]); self.I_soc.append([p["I_batt"] for p in full])
+        self.T, self.Ib = self.T_soc[0], self.I_soc[0]  # fresh pack (TDS graph, web page)
         self.thr_grid = _linspace(0.15, 1.0, 35)
-        self._cruise = {}  # row index -> (thrust, battery current) over thr_grid, computed when first needed
+        self._cruise = {}  # (row index, soc index) -> (thrust, battery current) over thr_grid
         self.usable = cfg["model"]["usable_capacity_fraction"] * sysm.b.mah
 
-    def _T(self, v):
-        return _interp(v, self.vgrid, self.T)
+    def _soc_w(self, used_mah):
+        u = min(max(used_mah / self.mah, 0.0), self.SOC_GRID[-1])
+        i = min(bisect.bisect_right(self.SOC_GRID, u), len(self.SOC_GRID) - 1)
+        a, b = self.SOC_GRID[i - 1], self.SOC_GRID[i]
+        return i - 1, (u - a) / (b - a)
 
-    def _I(self, v):
-        return _interp(v, self.vgrid, self.Ib)
+    def _T(self, v, used_mah=0.0):
+        i, w = self._soc_w(used_mah)
+        return (1 - w) * _interp(v, self.vgrid, self.T_soc[i]) + w * _interp(v, self.vgrid, self.T_soc[i + 1])
 
-    def _cruise_row(self, k):
-        if k not in self._cruise:
+    def _I(self, v, used_mah=0.0):
+        i, w = self._soc_w(used_mah)
+        return (1 - w) * _interp(v, self.vgrid, self.I_soc[i]) + w * _interp(v, self.vgrid, self.I_soc[i + 1])
+
+    def _cruise_row(self, k, j):
+        if (k, j) not in self._cruise:
             v = self.pl.mis["cruise_speed_mps"] + k * self.CRUISE_STEP
-            cr = [self.s.point(v, th, self.s.voc_cruise) for th in self.thr_grid]
-            self._cruise[k] = ([p["T"] for p in cr], [p["I_batt"] for p in cr])
-        return self._cruise[k]
+            voc = self.s.voc_at(self.SOC_GRID[j])
+            cr = [self.s.point(v, th, voc) for th in self.thr_grid]
+            self._cruise[(k, j)] = ([p["T"] for p in cr], [p["I_batt"] for p in cr])
+        return self._cruise[(k, j)]
 
-    def _cruise_current(self, v, D):
-        """Battery current that holds thrust D at cruise speed v (v >= cruise_speed_mps), None if full throttle
-        can't: linear in speed between the two cruise rows around v (exact at the set speed)."""
+    def _cruise_current_at(self, v, D, j):
         f = (v - self.pl.mis["cruise_speed_mps"]) / self.CRUISE_STEP
         k = int(f); f -= k
-        T0, I0 = self._cruise_row(k)
+        T0, I0 = self._cruise_row(k, j)
         if f < 1e-9:
             return _interp(D, T0, I0) if D <= max(T0) else None
-        T1, I1 = self._cruise_row(k + 1)
+        T1, I1 = self._cruise_row(k + 1, j)
         if D > max(T0) + f * (max(T1) - max(T0)):
             return None
         i0 = _interp(D, T0, I0)
         return i0 + f * (_interp(D, T1, I1) - i0)
 
-    def mission(self, m):
+    def _cruise_current(self, v, D, used_mah=None):
+        """Battery current that holds thrust D at cruise speed v (v >= cruise_speed_mps) with the pack at
+        used_mah (None = half used, the old fixed 'cruise' voltage); None if full throttle can't."""
+        i, w = self._soc_w(self.mah * 0.5 if used_mah is None else used_mah)
+        a = self._cruise_current_at(v, D, i)
+        b = self._cruise_current_at(v, D, i + 1) if w > 1e-9 else a
+        if a is None or b is None:
+            return None
+        return (1 - w) * a + w * b
+
+    def mission(self, m, arts=None):
         pl, rho = self.pl, self.rho
-        vlof = pl.klof * pl.vstall(m, rho)
+        drag = lambda mm, vv, CL=None: pl.drag(mm, vv, rho, CL=CL, arts=arts)
+        vlof = pl.vliftoff(m, rho)
         v = x = t = q_mah = 0.0; dt = 0.01
         while v < vlof:
             q = 0.5 * rho * v * v
-            a = (self._T(v) - pl.drag(m, v, rho, CL=pl.CLg) - pl.mu * max(m * G - q * pl.S * pl.CLg, 0)) / m
+            a = (self._T(v, q_mah) - drag(m, v, CL=pl.CLg) - pl.mu * max(m * G - q * pl.S * pl.CLg, 0)) / m
             if a <= 0 or t > 20:
                 return None
-            v += a * dt; x += v * dt; t += dt; q_mah += self._I(v) * dt / 3.6
-        vc = pl.mis["climb_speed_factor"] * pl.vstall(m, rho)
-        rc = (self._T(vc) - pl.drag(m, vc, rho)) * vc / (m * G)
+            v += a * dt; x += v * dt; t += dt; q_mah += self._I(v, q_mah) * dt / 3.6
+        vc = max(pl.mis["climb_speed_factor"] * pl.vstall(m, rho), vlof)
+        rc = (self._T(vc, q_mah) - drag(m, vc)) * vc / (m * G)
         if rc < pl.mis["min_climb_rate_mps"]:
             return None
         t_climb = pl.mis["climb_altitude_m"] / rc
-        q_mah += self._I(vc) * t_climb / 3.6
+        mid = q_mah + self._I(vc, q_mah) * t_climb / 7.2  # charge used half-way up the climb
+        rc_mid = (self._T(vc, mid) - drag(m, vc)) * vc / (m * G)
+        if rc_mid < pl.mis["min_climb_rate_mps"]:
+            return None
+        t_climb = pl.mis["climb_altitude_m"] / rc_mid
+        q_mah += self._I(vc, mid) * t_climb / 3.6
         vcr = pl.cruise_speed(m, rho)  # heavy planes cruise faster to stay min_cruise_speed_factor above stall
-        Icr = self._cruise_current(vcr, pl.drag(m, vcr, rho))
+        Dcr = drag(m, vcr)
+        Icr = self._cruise_current(vcr, Dcr, q_mah)
+        if Icr is None:
+            return None
+        Icr = self._cruise_current(vcr, Dcr, q_mah + Icr * pl.mis["cruise_time_s"] / 7.2)  # at mid-cruise charge
         if Icr is None:
             return None
         q_mah += Icr * pl.mis["cruise_time_s"] / 3.6 + pl.mis["approach_current_a"] * pl.mis["approach_time_s"] / 3.6
-        return dict(roll_m=x, roll_s=t, climb_mps=rc, cruise_mps=vcr, cruise_A=Icr, mah=q_mah)
+        return dict(roll_m=x, roll_s=t, vlof=vlof, rotation_limited=pl.rotation_limited(m, rho), climb_mps=rc_mid,
+                    cruise_mps=vcr, cruise_A=Icr, mah=q_mah)
 
-    def feasible(self, m):
-        r = self.mission(m)
+    def feasible(self, m, arts=None):
+        r = self.mission(m, arts)
         return r is not None and r["roll_m"] <= self.pl.x_lim and r["mah"] <= self.usable, r
 
-    def best(self):
+    def best(self, arts=None):
+        """Heaviest feasible takeoff mass with an article set (tuple of type names; None = the plane's reference
+        set / average articles)."""
         pl = self.pl
-        m0 = pl.empty + pl.extra + self.s.mass / 1000 + pl.n_art * pl.m_art
-        ok, _ = self.feasible(m0)
+        if arts is None and pl.ref_set:
+            arts = pl.ref_set
+        if arts is not None:
+            n_art, m_art, _ = pl.set_props(arts)
+        else:
+            n_art, m_art = pl.n_art, pl.n_art * pl.m_art
+        m0 = pl.empty + pl.extra + self.s.mass / 1000 + m_art
+        ok, _ = self.feasible(m0, arts)
         if not ok:
-            return dict(m_tow=m0, payload=0.0, score=0.0, m_base=m0, info=None)
+            return dict(m_tow=m0, payload=0.0, score=0.0, m_base=m0, info=None, arts=arts, n_art=n_art)
         lo, hi = m0, m0 + 0.5
-        while self.feasible(hi)[0] and hi < 50:
+        while self.feasible(hi, arts)[0] and hi < 50:
             lo, hi = hi, hi * 1.5
         for _ in range(30):
             mid = 0.5 * (lo + hi)
-            if self.feasible(mid)[0]:
+            if self.feasible(mid, arts)[0]:
                 lo = mid
             else:
                 hi = mid
-        info = self.mission(lo); payload = lo - m0
-        return dict(m_tow=lo, payload=payload, m_base=m0, info=info,
-                    score=pl.score_factor * payload / LB * pl.n_art)
+            if hi - lo < 1e-4:
+                break
+        info = self.mission(lo, arts); payload = lo - m0
+        return dict(m_tow=lo, payload=payload, m_base=m0, info=info, arts=arts, n_art=n_art,
+                    score=pl.score_factor * payload / LB * n_art)
+
+    def campaign(self):
+        """Best set of drag articles for each scored flight, with each type scored at most max_scored_uses_per_type
+        times over the flights_scored flights (rules 9.4.3). Returns (total score, [best() of each flight]) or
+        None when the plane has no article types."""
+        pl = self.pl
+        if not pl.types:
+            return None
+        sets = pl.article_sets()
+        res = {a: self.best(a) for a in sets}
+        # () = a flight slot left unscored, so 1 or 2 scored flights still count when the use cap rules out 3
+        sets = [a for a in sets if res[a]["score"] > 0] + [()]
+        names = sorted(pl.types)
+        best_total, best_pick = 0.0, []
+        for pick in itertools.combinations_with_replacement(sets, pl.flights_scored):
+            use = {n: 0 for n in names}
+            for a in pick:
+                for n in a:
+                    use[n] += 1
+            if max(use.values()) > pl.max_uses:
+                continue
+            tot = sum(res[a]["score"] for a in pick if a)
+            if tot > best_total + 1e-9:
+                best_total, best_pick = tot, [a for a in pick if a]
+        return best_total, [res[a] for a in best_pick]
 
 
 # =============================================================================
@@ -760,10 +1023,17 @@ def prescreen_motors(motors, props, lib, cal, cfg, bats, n_keep, avg_to, verbose
                 continue
             best = max(best, _mean(pt["gf"] for pt in crv) - m.mass - p.mass)
         score[m.name] = best
-    keep = sorted(score, key=score.get, reverse=True)[:n_keep]
+    # at least half the kept motors have datasheet Rm/I0 (if there are that many), so the verified table is never
+    # crowded out by estimated motors; the rest are the best of what is left
+    est = {m.name for m in motors if m.estimated}
+    order = sorted(score, key=score.get, reverse=True)
+    verified = [n for n in order if n not in est]
+    keep = verified[:min(len(verified), (n_keep + 1) // 2)]
+    keep += [n for n in order if n not in keep][:n_keep - len(keep)]
     if verbose:
-        n_est = sum(1 for m in motors if m.name in keep and m.estimated)
-        print(f"  prescreen: {len(motors)} motors -> best {len(keep)} kept ({n_est} with estimated Rm/I0)")
+        n_est = sum(1 for n in keep if n in est)
+        print(f"  prescreen: {len(motors)} motors -> best {len(keep)} kept ({n_est} with estimated Rm/I0; at least "
+              f"half with datasheet values)")
     return [m for m in motors if m.name in keep]
 
 
@@ -823,7 +1093,7 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
             notes.append(f"needs current limit {s.limit:.0f} A ({s.limit_src}; would draw {peak_free:.0f} A)")
         rng = cal.bench_range(p.group); u_pk = tip_speed(max(pt["rpm"] for pt in crv), p.D)
         if rng and u_pk > rng[1] + 0.5:
-            notes.append(f"thrust calibration beyond bench data (tip speed {u_pk:.0f} m/s > {rng[1]:.0f} m/s bench max)")
+            notes.append(f"thrust calibration beyond bench data (tip speed {u_pk:.1f} m/s > {rng[1]:.1f} m/s bench max)")
         if m.estimated:
             notes.append("motor Rm/I0 estimated (+/-15 %) - check datasheet")
         im_pk = max(pt["I_motor"] for pt in crv)
@@ -849,23 +1119,121 @@ def evaluate_all(lib, plane, metric, avg_to, verbose=True, prescreen=None):
         if verbose and len(combos) > 200 and i % max(1, len(combos) // 4) == 0:
             print(f"    {i}/{len(combos)}")
     if plane:
+        def simulate(row):
+            ev = Evaluator(row["_sys"], plane, cfg); best = ev.best()
+            info = best["info"] or {}
+            row.update(tow_kg=best["m_tow"], payload_kg=best["payload"], score=best["score"],
+                       mission_mah=info.get("mah", float("nan")), roll_m=info.get("roll_m", float("nan")),
+                       cruise_mps=info.get("cruise_mps", float("nan")), cruise_A=info.get("cruise_A", float("nan")),
+                       vlof_mps=info.get("vlof", float("nan")), _eval=ev)
+            if info.get("rotation_limited"):
+                row["notes"] = "; ".join(x for x in (row["notes"], "lift-off limited by CL_rotate (no rotation)") if x)
+
         results.sort(key=lambda r: r["net_gf"], reverse=True)
+        rest = []
         if plane_top and len(results) > plane_top:
+            # v2: the ESC hardly changes the mission (mass, limit), so keep the best ESC per motor+prop+battery
+            # before cutting to plane_top - otherwise one motor+prop fills the list with ESC/battery swaps.
+            # The other ESCs are tried again (on the mission score) for the rows that get a campaign below.
+            seen, uniq = set(), []
+            for r in results:
+                k = (r["motor"], r["prop"], r["battery"])
+                (rest if k in seen else uniq).append(r); seen.add(k)
             if verbose:
-                print(f"  mission simulation for the {plane_top} combinations with the best net thrust "
-                      f"(of {len(results)}; set model.plane_evaluate_top in config.json, 0 = all)")
-            results = results[:plane_top]
+                print(f"  mission simulation for the {plane_top} motor+prop+battery combinations with the best net "
+                      f"thrust (best ESC each; {len(uniq)} distinct of {len(results)}; model.plane_evaluate_top, 0 = all)")
+            results = uniq[:plane_top]
         for i, row in enumerate(results, 1):
             _progress("mission simulation", i, len(results))
-            ev = Evaluator(row["_sys"], plane, cfg); best = ev.best()
-            row.update(tow_kg=best["m_tow"], payload_kg=best["payload"], score=best["score"],
-                       mission_mah=best["info"]["mah"] if best["info"] else float("nan"),
-                       roll_m=best["info"]["roll_m"] if best["info"] else float("nan"),
-                       cruise_mps=best["info"]["cruise_mps"] if best["info"] else float("nan"), _eval=ev)
+            simulate(row)
+        results.sort(key=lambda r: r["score"], reverse=True)
+        k_top = mdl.get("campaign_top", 10)
+        if plane.types and k_top:
+            alt = {}  # (motor, prop, battery) -> rows with the ESCs left out above
+            for r in rest:
+                alt.setdefault((r["motor"], r["prop"], r["battery"]), []).append(r)
+            done = {True: set(), False: set()}  # verified / unverified motor+prop: k_top of each get a campaign
+            for idx in range(len(results)):
+                row = results[idx]
+                ver = not unverified(row)
+                key2 = (row["motor"], row["prop"])
+                if key2 in done[ver] or len(done[ver]) >= k_top:
+                    continue
+                done[ver].add(key2)
+                for a in alt.pop((row["motor"], row["prop"], row["battery"]), []):  # best ESC by mission score
+                    simulate(a)
+                    # swap only for a clear gain: differences under ~1 % are within the solver's step size
+                    if a["score"] > row["score"] * (1 + ESC_SWAP_MARGIN):
+                        results.append(row); results[idx] = row = a
+                tot, flights = row["_eval"].campaign()
+                row.update(campaign_score=tot, campaign=" | ".join(
+                    f"{'+'.join(f['arts'])}: {f['payload'] / LB:.2f} lb" for f in flights))
+                row.update(band_payload_kg=payload_band(row, lib, plane, cfg))
     key = {"avg_thrust": "avg_gf", "static_thrust": "static_gf", "net_thrust": "net_gf",
            "thrust_per_watt": "gpw", "score": "score"}[metric]
     results.sort(key=lambda r: r[key], reverse=True)
     return results, key
+
+
+def sensitivity(sysm, lib, plane_dict, cfg, campaign=True):
+    """Payload (reference flight) and campaign score of one combination when one assumption changes at a time.
+    Returns rows (label, payload kg, campaign score or None)."""
+    def run(pd=None, c=None):
+        c = c or cfg; pl = Plane(pd or plane_dict)
+        cal = Calibration(dict(lib, cfg=c), c["model"]["air_density_kg_m3"])
+        s = System(sysm.m, sysm.p, sysm.e, sysm.b, cal, c); ev = Evaluator(s, pl, c)
+        b = ev.best(); cs = ev.campaign() if campaign and pl.types else None
+        return b["payload"], (cs[0] if cs else None)
+
+    def plane_with(**kw):
+        d = json.loads(json.dumps(plane_dict))
+        for k, v in kw.items():
+            if k in ("cruise_time_s",):
+                d["mission"][k] = v
+            else:
+                d[k] = v
+        return d
+
+    def cfg_with(**kw):
+        c = json.loads(json.dumps(cfg)); c["model"].update(kw); return c
+
+    p = plane_dict; m = cfg["model"]; clg = p.get("CL_ground_roll", 0.5)
+    full_rot = p["CLmax"] / p.get("liftoff_speed_factor", 1.1) ** 2
+    cases = [("baseline", None, None),
+             (f"CL_rotate {full_rot:.2f} (wing rotates to CLmax/klof^2)", plane_with(CL_rotate=full_rot), None),
+             (f"CL_rotate {(clg + full_rot) / 2:.2f} (half way)", plane_with(CL_rotate=(clg + full_rot) / 2), None),
+             ("CLmax 0.40 (SM 10 %)", plane_with(CLmax=0.40), None), ("CLmax 0.62 (SM 5 %)", plane_with(CLmax=0.62), None),
+             ("pack R x0.7", None, cfg_with(pack_r_scale=m.get("pack_r_scale", 1) * 0.7)),
+             ("pack R x1.5", None, cfg_with(pack_r_scale=m.get("pack_r_scale", 1) * 1.5)),
+             ("no drive-loss R (v1 electrical model)", None, cfg_with(r_drive_mohm=0)),
+             ("cruise time -30 %", plane_with(cruise_time_s=p["mission"]["cruise_time_s"] * 0.7), None),
+             ("cruise time +30 %", plane_with(cruise_time_s=p["mission"]["cruise_time_s"] * 1.3), None),
+             ("empty mass -0.1 kg", plane_with(empty_mass_kg=p["empty_mass_kg"] - 0.1), None),
+             ("empty mass +0.1 kg", plane_with(empty_mass_kg=p["empty_mass_kg"] + 0.1), None),
+             ("takeoff margin 1.0 (no 20 % reserve)", plane_with(takeoff_margin=1.0), None)]
+    return [(lab,) + run(pd, c) for lab, pd, c in cases]
+
+
+def print_sensitivity(rows, title):
+    base_p, base_c = rows[0][1], rows[0][2]
+    print(f"\nSensitivity - {title}\n  {'case':44} {'payload kg':>10} {'change':>8} {'campaign':>9} {'change':>8}")
+    for lab, pk, cs in rows:
+        dc = f"{cs - base_c:+8.1f}" if cs is not None and base_c is not None else ""
+        print(f"  {lab:44} {pk:10.2f} {pk - base_p:+8.2f} {cs if cs is not None else float('nan'):9.1f} {dc}")
+
+
+def payload_band(row, lib, plane, cfg):
+    """(low, high) payload in kg for one result row over the model uncertainties that matter most: the thrust
+    calibration above the bench data (hold / flat / linear) and pack resistance x0.7 / x1.5."""
+    s0 = row["_sys"]; vals = []
+    for mode in Calibration.MODES:
+        for rf in (0.7, 1.0, 1.5):
+            c = json.loads(json.dumps(cfg)); c["model"]["thrust_cal_extrapolation"] = mode
+            c["model"]["pack_r_scale"] = c["model"].get("pack_r_scale", 1.0) * rf
+            cal = Calibration(dict(lib, cfg=c), c["model"]["air_density_kg_m3"])
+            s = System(s0.m, s0.p, s0.e, s0.b, cal, c)
+            vals.append(Evaluator(s, plane, c).best()["payload"])
+    return min(vals), max(vals)
 
 
 def write_csv(results, path, plane):
@@ -873,7 +1241,11 @@ def write_csv(results, path, plane):
             "peak_motor_A", "uncapped_peak_A", "limit_A", "motor_limit_A", "batt_limit_A", "static_W", "gpw",
             "rpm_static", "prop_mass_g", "full_throttle_min"]
     if plane:
-        cols += ["tow_kg", "payload_kg", "score", "mission_mah", "roll_m", "cruise_mps"]
+        cols += ["tow_kg", "payload_kg", "score", "mission_mah", "roll_m", "vlof_mps", "cruise_mps", "cruise_A",
+                 "band_payload_lo_kg", "band_payload_hi_kg", "campaign_score", "campaign"]
+        for r in results:
+            if r.get("band_payload_kg"):
+                r["band_payload_lo_kg"], r["band_payload_hi_kg"] = r["band_payload_kg"]
     cols += ["notes"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f); w.writerow(cols)
@@ -885,14 +1257,56 @@ def write_csv(results, path, plane):
             w.writerow(out)
 
 
+ESC_SWAP_MARGIN = 0.01  # evaluate_all: another ESC replaces the net-thrust pick only if its mission score is >1 % higher
+
+
+def unverified(r):
+    """Why a result rests on unchecked data ('' if it doesn't): estimated motor Rm/I0, uncalibrated prop group."""
+    s = r.get("_sys"); why = []
+    if s is not None and s.m.estimated:
+        why.append("estimated motor")
+    if s is not None and s.p.blades > 2:
+        why.append(f"{s.p.blades}-blade prop")
+    return ", ".join(why)
+
+
+def unique_top(results, n, verified=True):
+    """First (best) row of each motor+prop, verified or unverified ones only, at most n."""
+    seen, out = set(), []
+    for r in results:
+        k = (r["motor"], r["prop"])
+        if k in seen or bool(unverified(r)) == verified:
+            continue
+        seen.add(k); out.append(r)
+        if len(out) >= n:
+            break
+    return out
+
+
 def print_top(results, key, n, plane):
+    """v2: one line per motor+prop (its best ESC + battery); the full list is in results.csv. Results resting on
+    estimated motors or multi-blade props are listed separately."""
+    ver, unv = unique_top(results, n, True), unique_top(results, max(3, n // 3), False)
+    _print_table(ver, n, plane, "Best motor + prop combinations (each shown once with its best ESC + battery)")
+    if unv:
+        _print_table(unv, len(unv), plane, "Unverified (estimated motor data or multi-blade prop) - check before buying")
+    if plane and any(r.get("campaign") for r in ver):
+        print("\nCompetition campaign (3 scored flights, each article type scored max 4x) for the best combinations:")
+        for i, r in enumerate(ver, 1):
+            if r.get("campaign"):
+                lo, hi = r.get("band_payload_kg") or (float("nan"),) * 2
+                print(f"{i:>2}  {r['motor'][:18]:18} {r['prop'][:16]:16} total score {r['campaign_score']:6.1f}   "
+                      f"payload band {lo:.2f}-{hi:.2f} kg (ref. flight)\n      {r['campaign']}")
+
+
+def _print_table(rows, n, plane, title):
     hdr = f"{'#':>2}  {'motor':18} {'prop':36} {'esc':22} {'battery':24} {'static':>6} {'@10m/s':>6} {'peak A':>6} {'mass':>5}"
     if plane:
         hdr += f" {'payload':>7} {'score':>6}"
     else:
         hdr += f" {'net':>6}"
-    print("\n" + hdr)
-    for i, r in enumerate(results[:n], 1):
+    print(f"\n{title}\n" + hdr)
+    for i, r in enumerate(rows[:n], 1):
         line = (f"{i:>2}  {r['motor'][:18]:18} {r['prop'][:36]:36} {r['esc'][:22]:22} {r['battery'][:24]:24} "
                 f"{r['static_gf']:6.0f} {r['thrust_10ms']:6.0f} {r['peak_A']:6.1f} {r['prop_mass_g']:5.0f}")
         if plane:
@@ -918,7 +1332,7 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         return []
     files = []
     accent, grey = "#2563eb", "#9ca3af"
-    top = results[:n_top]
+    top = unique_top(results, n_top, True) or results[:n_top]  # same rows as the printed table: verified, one per motor+prop
     label = lambda r: f"{r['motor']} | {r['prop']} | {r['battery']} | {r['esc']}"
 
     # 1. ranking dot plot (values are often within a few %, so dots + % gap read better than bars)
@@ -969,12 +1383,14 @@ def make_plots(results, key, out, plane, n_top, metric_label):
         ax.set_xlabel("Propulsion mass: motor + prop + ESC + battery (g)")
         ax.set_ylabel(f"Mean thrust (gf)"); ttl = "Mean thrust vs propulsion mass - every combination"
     ax.scatter(xs, ys, s=14, color=grey)
+    b = top[0]  # #1 of the printed table (verified data)
+    bx, by = (b["peak_A"], b["payload_kg"]) if plane else (b["prop_mass_g"], b["avg_gf"])
     if not plane and key == "net_gf":  # line of equal net thrust through #1
         xl = np.array([min(xs), max(xs)])
-        ax.plot(xl, xl + results[0]["net_gf"], ls="--", color=accent, lw=1)
-        ax.text(xl[0], xl[0] + results[0]["net_gf"] - 12, "  line of equal net thrust to #1 (better = above)", color=accent, fontsize=8, va="top")
-    ax.scatter([xs[0]], [ys[0]], s=70, color=accent, zorder=3)
-    ax.annotate(f"#1 {label(results[0])}", (xs[0], ys[0]), xytext=(-10, 10), textcoords="offset points",
+        ax.plot(xl, xl + b["net_gf"], ls="--", color=accent, lw=1)
+        ax.text(xl[0], xl[0] + b["net_gf"] - 12, "  line of equal net thrust to #1 (better = above)", color=accent, fontsize=8, va="top")
+    ax.scatter([bx], [by], s=70, color=accent, zorder=3)
+    ax.annotate(f"#1 {label(b)}", (bx, by), xytext=(-10, 10), textcoords="offset points",
                 fontsize=8, color=accent, ha="right")
     if plane:
         ax.set_xlabel("Peak battery current (A)")
@@ -985,7 +1401,7 @@ def make_plots(results, key, out, plane, n_top, metric_label):
 
     # 4. TDS graph: thrust available vs drag (lbf vs ft/s) for the best combination
     if plane:
-        r = results[0]; ev = r["_eval"]; pl = plane; m = r["tow_kg"]
+        r = (unique_top(results, 1, True) or results)[0]; ev = r["_eval"]; pl = plane; m = r["tow_kg"]  # verified best
         v = np.linspace(max(pl.vstall(m, ev.rho) * 0.9, 1), 25, 80)
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(v / 0.3048, [ev._T(x) / LBF for x in v], color=accent, lw=2.8, label="Thrust available (full throttle)")
@@ -1712,6 +2128,27 @@ def import_motors(path, data_dir, kv_min, kv_max, i_min, m_min, m_max, keep_disc
 # =============================================================================
 # Single-combination detail
 # =============================================================================
+def bench_report(lib, tol_rpm=3.0, tol_gf=5.0, verbose=True):
+    """Bench rows forward-predicted at their supply voltage. Returns True if every row is within tolerance."""
+    cfg = lib["cfg"]; cal = Calibration(lib, cfg["model"]["air_density_kg_m3"])
+    rows = cal.bench_check(lib, cfg); ok = True
+    if not rows:  # nothing checked is not a pass
+        if verbose:
+            print("\nBench check: no calibration.csv rows with supply_v whose motor and prop are in the library")
+        return False
+    if verbose:
+        cal.describe(lib["props"])
+        print(f"\nBench check (each row at its supply voltage; tolerance RPM {tol_rpm:g} %, thrust {tol_gf:g} %)")
+        print(f"  {'motor':16} {'prop':32} {'I meas/model':>14} {'RPM meas/model':>16} {'err':>6} {'gf meas/model':>14} {'err':>6}")
+    for mo, pr, Im, Ip, Rm_, Rp, Tm, Tp in rows:
+        e_r, e_t = (Rp / Rm_ - 1) * 100, (Tp / Tm - 1) * 100
+        bad = abs(e_r) > tol_rpm or abs(e_t) > tol_gf; ok &= not bad
+        if verbose:
+            print(f"  {mo[:16]:16} {pr[:32]:32} {Im:6.1f}/{Ip:6.1f} {Rm_:7.0f}/{Rp:7.0f} {e_r:+5.1f}% {Tm:6.0f}/{Tp:6.0f} "
+                  f"{e_t:+5.1f}%" + ("  <-- OUT OF TOLERANCE" if bad else ""))
+    return ok
+
+
 def single(lib, names, voc=None):
     cfg = lib["cfg"]; cal = Calibration(lib, cfg["model"]["air_density_kg_m3"])
     find = lambda lst, n: next((x for x in lst if x.name == n), None)
@@ -1726,8 +2163,9 @@ def single(lib, names, voc=None):
               f"its calibration (from 2-blade bench tests) is unverified")
     lim = (f"limits: motor {s.limit_motor:g} A, battery {s.limit_batt:g} A" if s.mode == "cap"
            else f"limit {s.limit:g} A (reject)" if s.limit else "no current limit")
-    print(f"\n{names[0]} + {names[1]} + {names[2]} + {names[3]}\n  ({lim}; R pack+wiring {s.r_line * 1000:.1f} mOhm, "
-          f"R motor+ESC {s.r_motor * 1000:.1f} mOhm)")
+    print(f"\n{names[0]} + {names[1]} + {names[2]} + {names[3]}\n  ({lim}; R pack (under load) + wiring {s.r_line * 1000:.1f} mOhm, "
+          f"R motor+ESC+drive loss {s.r_motor * 1000:.1f} mOhm; pack Voc {s.voc_at(0):.2f} V fresh, "
+          f"{s.voc_at(0.5):.2f} V half used)")
     print(f"{'V m/s':>6} {'RPM':>6} {'thrust gf':>9} {'I_batt':>7} {'I_motor':>7} {'V_batt':>6} {'P_in W':>6} {'thr':>5}")
     for pt in s.curve(cfg["model"]["speeds_mps"], voc):
         print(f"{pt['v']:6.1f} {pt['rpm']:6.0f} {pt['gf']:9.0f} {pt['I_batt']:7.1f} {pt['I_motor']:7.1f} "
@@ -1781,6 +2219,21 @@ def main():
     ap.add_argument("--two-blade-only", action="store_true",
                     help="leave 3/4-blade props out of the search (their calibration from 2-blade bench tests is "
                          "unverified); same as model.multi_blade_props = exclude in config.json")
+    ap.add_argument("--sensitivity", action="store_true",
+                    help="after the ranking (or with --single): payload / campaign score of the best combination when one "
+                         "assumption changes at a time (CL_rotate, CLmax, pack R, drive loss, cruise time, empty mass)")
+    ap.add_argument("--bench-check", action="store_true",
+                    help="forward-predict every bench row in calibration.csv (with supply_v) and print the errors, then stop")
+    ap.add_argument("--only-owned", action="store_true",
+                    help="search only parts marked owned = yes in motors/props/escs/batteries.csv (the calibration "
+                         "still uses the whole library)")
+    ap.add_argument("--esc", action="append", metavar="NAME",
+                    help="search only this ESC (repeat for several), e.g. the one you have")
+    ap.add_argument("--battery", action="append", metavar="NAME",
+                    help="search only this battery (repeat for several)")
+    ap.add_argument("--campaign-top", type=int, default=None, metavar="N",
+                    help="3-flight campaign + payload band for the best N motor+prop rows (verified and unverified "
+                         "each); overrides model.campaign_top")
     ap.add_argument("--prescreen", type=int, default=None,
                     help="keep only the N best props (by thrust with each motor) before the full search; 0 = off")
     a = ap.parse_args()
@@ -1818,8 +2271,38 @@ def main():
         lib["cfg"]["model"]["thrust_cal_extrapolation"] = a.thrust_cal
     if a.two_blade_only:
         lib["cfg"]["model"]["multi_blade_props"] = "exclude"
+    if a.campaign_top is not None:
+        lib["cfg"]["model"]["campaign_top"] = a.campaign_top
+    lib["all_motors"], lib["all_props"] = list(lib["motors"]), list(lib["props"])  # calibration uses these
+    if a.only_owned:
+        for k in ("motors", "props", "escs", "batteries"):
+            own = [x for x in lib[k] if getattr(x, "owned", False)]
+            if not own:
+                sys.exit(f"--only-owned: no {k} marked owned = yes")
+            lib[k] = own
+    for k, names in (("escs", a.esc), ("batteries", a.battery)):
+        if names:
+            missing = [n for n in names if n not in {x.name for x in lib[k]}]
+            if missing:
+                sys.exit(f"--{k[:-1] if k == 'escs' else 'battery'}: not found: {', '.join(missing)}")
+            lib[k] = [x for x in lib[k] if x.name in names]
+    if a.bench_check:
+        bench_report(lib); return
     if a.single:
-        single(lib, a.single); return
+        single(lib, a.single)
+        if a.sensitivity:
+            if a.no_plane:
+                print("\n--sensitivity needs a plane (it compares payload and score); left out with --no-plane")
+                return
+            pp = a.plane or os.path.join(a.data, "plane.json")
+            if not os.path.exists(pp):
+                sys.exit(f"--sensitivity: no plane file at {pp}")
+            cal = Calibration(lib, lib["cfg"]["model"]["air_density_kg_m3"])
+            find = lambda lst, n: next(x for x in lst if x.name == n)
+            s = System(find(lib["motors"], a.single[0]), find(lib["props"], a.single[1]), find(lib["escs"], a.single[2]),
+                       find(lib["batteries"], a.single[3]), cal, lib["cfg"])
+            print_sensitivity(sensitivity(s, lib, json.load(open(pp, encoding="utf-8")), lib["cfg"]), " + ".join(a.single))
+        return
 
     plane = None
     if not a.no_plane:
@@ -1842,12 +2325,19 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     write_csv(results, os.path.join(a.out, "results.csv"), plane)
     print_top(results, key, a.top, plane)
-    best = results[0]
-    print(f"\nBest by {labels[metric]}: {best['motor']} + {best['prop']} + {best['esc']} + {best['battery']}")
+    best = (unique_top(results, 1, True) or results)[0]  # verified data first, as in the main table
+    why = unverified(best)
+    print(f"\nBest by {labels[metric]}: {best['motor']} + {best['prop']} + {best['esc']} + {best['battery']}"
+          + (f"  (UNVERIFIED: {why})" if why else ""))
     if plane:
         print(f"  max takeoff mass {best['tow_kg']:.2f} kg, payload {best['payload_kg']:.2f} kg "
               f"({best['payload_kg'] / LB:.2f} lb), score {best['score']:.1f}, mission {best['mission_mah']:.0f} mAh, "
               f"cruise {best['cruise_mps']:.1f} m/s")
+    if a.sensitivity and not plane:
+        print("\n--sensitivity needs a plane (it compares payload and score); skipped")
+    if plane and a.sensitivity:
+        r = (unique_top(results, 1, True) or results)[0]
+        print_sensitivity(sensitivity(r["_sys"], lib, plane.d, lib["cfg"]), f"{r['motor']} + {r['prop']} + {r['esc']} + {r['battery']}")
     files = [] if a.no_plots else make_plots(results, key, a.out, plane, a.top, labels[metric])
     print(f"\nWrote {os.path.join(a.out, 'results.csv')}" + "".join(f"\n      {f}" for f in files))
 

@@ -11,5 +11,5 @@ Turning 900 75C,3,900,84,15,75,R assumed; XT30 - swap to XT60
 NANO Tech 800 80C,3,800,81,15,80,R assumed; XT60
 NANO Tech 900 80C,3,900,87,15,80,R assumed; XT60
 OVONIC 800 80C,3,800,75,15,80,R assumed; EC2
-OVONIC 850 80C,3,800,75,15,80,R assumed; XT60
-OVONIC 850 150C,3,800,75,15,150,R assumed; XT60
+OVONIC 850 80C,3,850,75,15,80,R assumed; XT60; mah corrected 800->850 (name); mass unverified
+OVONIC 850 150C,3,850,75,15,150,R assumed; XT60; mah corrected 800->850 (name); mass unverified

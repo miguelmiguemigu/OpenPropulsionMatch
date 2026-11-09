@@ -11,7 +11,7 @@ New here? Start with **[GUIDE.md](GUIDE.md)** (step-by-step usage). This README 
 There is also a **website version** (same calculator, runs in the browser), deployed to Cloudflare Pages on every push to
 `main` - see [web/WEB.md](web/WEB.md).
 
-Current library (`data_2/`): 124 motors (8 datasheet + 116 from rcplanes.online with estimated Rm/I0), 20 APC PER3 props
+Current library (`data_2/`, v2 model on branch `model-v2`; see the Obsidian note "propcalc v2 – model changes"): 124 motors (8 datasheet + 116 from rcplanes.online with estimated Rm/I0), 20 APC PER3 props
 (19 switched on; 203 APC tables in `data_2/propellers/APC_DAT_Files/`), 5 ESCs, 14 batteries.
 
 ```
@@ -38,6 +38,10 @@ Run from inside the `propcalc` folder.
 | `--max-current A` | extra battery-current cap for every combination (= `model.max_system_current_a`) |
 | `--two-blade-only` | leave 3/4-blade props out (their calibration from 2-blade bench tests is unverified) |
 | `--prescreen N` | keep the best N props and N motors after the quick pre-screen (0 = everything) |
+| `--sensitivity` | payload / 3-flight score of the best combination (or the `--single` one) when one assumption changes |
+| `--bench-check` | forward-predict every bench row with `supply_v` and print the errors |
+| `--only-owned` | search only parts with `owned = yes` (optional column in the four CSVs); the calibration still uses the whole library |
+| `--esc NAME` / `--battery NAME` | search only this ESC / battery (repeat for several), e.g. the hardware you have |
 | `--out FOLDER` | output folder (default `results/`) |
 | `--top N` | how many to print / plot (default 10) |
 | `--no-plots` | skip the graphs |
@@ -65,7 +69,7 @@ Run from inside the `propcalc` folder.
 | `props/*.csv` | `J,Ct,Cp` table (static row J=0 first). `format=apc` reads APC `PER3_*.dat` directly (all RPM tables); `format=uiuc` reads `static.txt;tunnel.txt` |
 | `escs.csv` | name, cont_a, burst_a, mass_g, r_mohm, notes |
 | `batteries.csv` | name, cells, mah, mass_g, r_mohm, c_cont (optional c_burst), notes |
-| `calibration.csv` | bench points (group, motor, prop, current_a, rpm, thrust_gf, use=both/thrust/torque, source) |
+| `calibration.csv` | bench points (group, motor, prop, current_a, rpm, thrust_gf, use=both/thrust/torque, source, supply_v). `supply_v` (optional, used to fit `R_drive`) = the **loaded voltage measured at the ESC input leads** during that point, and only on **100 % throttle** rows (the fit assumes the motor sees the full supply). Leave it empty on part-throttle rows. |
 | `config.json` | rules (cells, max mAh, max prop diameter) and model settings (see below) |
 | `plane.json` | airframe + mission (optional, see below) |
 | `all_motor.txt` | raw rcplanes.online export (input for `--import-motors`) |
@@ -74,23 +78,30 @@ Run from inside the `propcalc` folder.
 | key | default | what |
 |---|---|---|
 | `air_density_kg_m3` | 1.225 | air density |
-| `voc_per_cell_fresh` / `voc_per_cell_cruise` | 4.0 / 3.8 | pack open-circuit voltage at takeoff / later in the flight |
+| `voc_curve_used_fraction` / `voc_curve_cell_v` | 4.18 → 3.27 V | **v2:** LiPo resting voltage per cell vs share of rated capacity used; the mission follows it (empty both lists to fall back to the fixed values below) |
+| `voc_per_cell_fresh` / `voc_per_cell_cruise` | 4.0 / 3.8 | legacy fixed pack voltage, used only without the curve: fresh at the start, cruise from half the capacity used on (linear in between). A `config.json` that sets these but has no curve keys (a v1 file) uses them. |
+| `pack_r_load_factor` | 1.8 | **v2:** pack resistance under load = `r_mohm` × this (sag/polarisation at 50–80 A); a `r_mohm_dc` column in `batteries.csv` overrides it |
+| `pack_r_scale` | 1.0 | multiplies the resulting pack resistance whatever its source (also `r_mohm_dc`); the payload band and `--sensitivity` vary it |
+| `r_drive_mohm` | auto | **v2:** extra motor-side resistance (ESC losses, leads, heating, Kv drop). `auto` fits it so that every `calibration.csv` row with `supply_v` reaches its measured RPM (currently 21.5 mΩ); or a number in mΩ (`20`, `"20 mOhm"`) |
 | `wiring_and_plug_mohm` | 5 | extra resistance of leads, plugs, arming plug |
 | `usable_capacity_fraction` | 0.8 | share of the pack's mAh the mission may use |
 | `speeds_mps` | 0-20 | airspeeds for curves |
 | `current_limit_mode` | cap | `cap` / `reject` / `ignore` |
 | `battery_rating` | continuous | pack current limit from `c_cont` (`continuous`) or `c_burst` (`burst`) |
-| `multi_blade_props` | include | `exclude` = 2-blade props only, same as `--two-blade-only` (blade count from the name, e.g. `12x7E-3`, or a `blades` column in `props.csv`) |
+| `multi_blade_props` | exclude | `exclude` = 2-blade props only, same as `--two-blade-only` (blade count from the name, e.g. `12x7E-3`, or a `blades` column in `props.csv`) |
 | `thrust_cal_extrapolation` | hold | thrust factor beyond the fastest bench point: `hold`, `linear`, `flat` (also `--thrust-cal`) |
 | `max_system_current_a` | - | optional cap for every combination (same as `--max-current`) |
 | `prescreen_props` / `prescreen_motors` | 40 / 15 | how many props / motors survive the pre-screen |
-| `plane_evaluate_top` | 400 | combinations that get the full mission simulation (0 = all) |
+| `plane_evaluate_top` | 600 | motor+prop+battery combinations (best ESC each) that get the full mission simulation (0 = all) |
+| `campaign_top` | 10 | best motor+prop combinations that also get the 3-flight campaign and payload band |
 
 ### `plane.json` keys
-Wing: `wing_area_m2`, `span_m`, `CLmax`, `CL_ground_roll`, `CD0`, `oswald_e`, `extra_CdA_m2` (drag area of gear, motor,
+Wing: `wing_area_m2`, `span_m`, `CLmax`, `CL_ground_roll`, `CL_rotate` (**v2:** highest CL on the gear at lift-off; default = `CL_ground_roll`, i.e. the wing can't rotate), `CD0`, `oswald_e`, `extra_CdA_m2` (drag area of gear, motor,
 payload bay… added to the drag at every speed). Takeoff: `rolling_friction`, `liftoff_speed_factor`
 (× stall speed), `takeoff_distance_limit_m` (15.24 = 50 ft), `takeoff_margin`. Masses: `empty_mass_kg` (airframe without payload
-and propulsion), `extra_propulsion_mass_g` (mount, wiring, spinner). `drag_articles`: `count`, `mass_kg_each`, `CdA_m2_each`.
+and propulsion), `extra_propulsion_mass_g` (mount, wiring, spinner). `drag_articles`: `count`, `mass_kg_each`, `CdA_m2_each`;
+**v2:** `types` (`{name: {min_weight_lb, CdA_m2, mass_kg optional}}`), `reference_set` (types flown in the ranking), `mounts` (3),
+`max_scored_uses_per_type` (4), `flights_scored` (3) for the campaign optimiser.
 `mission`: `climb_altitude_m`, `climb_speed_factor`, `min_climb_rate_mps`, `cruise_speed_mps` (the slowest cruise; a heavier plane
 cruises faster, at `min_cruise_speed_factor` × stall speed), `cruise_time_s`, `approach_time_s`, `approach_current_a`.
 `score_factor` = 1.25 (rules).
@@ -111,11 +122,14 @@ Props from another source need their own `cal_group` and at least one bench poin
 
 ## How it works
 Per operating point: `T = Ct·ρ·n²·D⁴`, `P = Cp·ρ·n³·D⁵`, `I_motor = Q/Kt + I0`, `I_batt = throttle·I_motor`,
-`V_batt = Voc − I_batt·(R_pack + R_wiring)`, `throttle·V_batt = RPM/Kv + I_motor·(Rm + R_esc)`, solved for the RPM where
+`V_batt = Voc(charge used) − I_batt·(R_pack·k_load + R_wiring)`, `throttle·V_batt = RPM/Kv + I_motor·(Rm + R_esc + R_drive)`, solved for the RPM where
 motor torque = prop torque. The ESC resistance is on the motor side because its FETs carry the motor current for the whole
 PWM period (synchronous rectification); pack and leads carry the battery current.
 Prop data is scaled per `cal_group` to match real bench tests: a torque factor, and a thrust factor that depends on the
 blade tip speed `π·D·n` (so 12" bench points carry over to 10-11" props at the same tip speed, not the same RPM).
+**v2 electrical calibration:** `R_drive` is fitted so the bench rows reproduce their RPM at their supply voltage
+(`--bench-check` prints every row; `tests/test_model.py` fails if one is off by > 3 % RPM / 5 % thrust). Without it v1
+over-predicted its own bench points by 7–16 % RPM and 11–37 % thrust.
 Prop RPM limits follow APC: 150,000 / D for thin-electric props (65,000 SF, 105,000 MR, 120,000 folding).
 
 **Current limit modes** (`config.json` or `--limit-mode`):
@@ -133,6 +147,11 @@ motors fairly (several rcplanes motors have burst-type ratings) and set it to wh
 Cruise is flown at `cruise_speed_mps`, or faster when the plane is heavy - never below `min_cruise_speed_factor` × stall
 speed (`cruise_mps` in `results.csv`). Cruise lasts `cruise_time_s` whatever the speed.
 Payload = that mass − airframe − propulsion − drag articles; score = `score_factor × payload_lb × N_articles`.
+**v2:** lift-off speed = max(`liftoff_speed_factor` × V_stall, speed where `CL_rotate` carries the weight); the pack voltage
+follows the charge used through roll, climb and cruise. For the best `campaign_top` motor+prop combinations the **campaign**
+picks the article set of each of the 3 scored flights (each type scored ≤ 4×, rules 9.4.3) to maximise FS1+FS2+FS3, and a
+**payload band** reruns the reference flight with calibration `hold/flat/linear` × pack R 0.7/1.0/1.5.
+`--sensitivity` shows how payload and campaign score move with CL_rotate, CLmax, pack R, drive loss, cruise time, empty mass.
 
 **Without a plane**, ranking is `net_thrust` (default: mean thrust 0–12 m/s minus the mass of motor + prop + ESC +
 battery), `avg_thrust` (mean thrust only, mass ignored), `static_thrust` or `thrust_per_watt`.
@@ -168,7 +187,8 @@ Prop masses are estimated (scaled from a 30 g 12" APC E) and RPM limits use APC-
 
 **Large libraries:** with many props the search first pre-screens each prop with each motor and keeps the best 40
 (`model.prescreen_props` in `config.json`, or `--prescreen N`, `--prescreen 0` = everything). With a plane, the full
-mission simulation runs on the 400 combinations with the best net thrust (`model.plane_evaluate_top`, 0 = all).
+mission simulation runs on the 600 motor+prop+battery combinations (best ESC each) with the best net thrust
+(`model.plane_evaluate_top`, 0 = all; a full run gives the same top 5).
 
 ## Importing your own wind-tunnel data
 ```
@@ -194,7 +214,10 @@ Notes on the 2024 data (T-Motor 2826, Mezon 55, 11x8 / 12x8 / 14x7):
   Until then, treat the tunnel props as the pessimistic case and the APC model as the optimistic case.
 
 ## Caveats
-- Pack resistances in `batteries.csv` are **assumed** – measure yours (charger IR readout) and edit.
+- Pack resistances in `batteries.csv` are **assumed** – measure yours (charger IR readout) and edit; the model multiplies them by `pack_r_load_factor`.
+- `R_drive` comes from three SunnySky bench rows only - add your own thrust-stand rows (with `supply_v` = loaded voltage at the ESC leads, 100 % throttle) to `calibration.csv`. The motor recommendation depends on it: at R_drive ≤ ~10 mΩ the 2826SL 1100 kV + 12x8E would beat the 1250 kV motors.
+- The 2024 tunnel 12x8 gives 12–21 % less thrust than the calibrated APC 12x8E: treat it as the pessimistic case.
+- `CL_rotate` decides most of the payload - measure it (taxi test).
 - `plane.json` is an **illustrative** airframe – replace it with your design before trusting payload/score.
 - ESC resistances in `escs.csv` are **assumed** (3 mΩ) – check masses and ratings against the ESCs you actually use.
 - Motors from rcplanes.online have **estimated** Rm/I0 – add datasheet values before choosing one.
